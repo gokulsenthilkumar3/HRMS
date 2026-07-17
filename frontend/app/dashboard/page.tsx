@@ -1,375 +1,298 @@
 'use client';
-
-import React, { useEffect, useState } from 'react';
-import useSWR from 'swr';
-import { useAuth } from '../../context/AuthContext';
-import { apiFetch } from '../../lib/api';
+import React, { useState, useEffect } from 'react';
 import {
-  Laptop,
-  RotateCcw,
-  Wrench,
-  Plus,
-  CheckCircle,
-  Archive,
-  TrendingUp,
-  Package,
-  Users,
-  AlertTriangle,
-  Sparkles,
-  Info,
-  Activity,
-  Shield,
-  ArrowRight,
-  Leaf,
+  Users, TrendingDown, Briefcase, CalendarOff,
+  ArrowUpRight, ArrowDownRight, RefreshCw,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import DigitalTwin from '../../components/DigitalTwin';
-import { socket } from '../../lib/socket';
 
-const fetcher = (url: string) => apiFetch(url);
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+// ─ Types
+interface KPICard {
+  label: string;
+  value: number;
+  unit?: string;
+  change: number; // % change vs last period
+  icon: React.ReactNode;
+  color: string;
+  loading?: boolean;
 }
 
-function activityIcon(type: string) {
-  if (type === 'checkout') return <Laptop size={14} />;
-  if (type === 'checkin') return <RotateCcw size={14} />;
-  if (type === 'maintenance') return <Wrench size={14} />;
-  if (type === 'added') return <Plus size={14} />;
-  if (type === 'retired') return <Archive size={14} />;
-  return <CheckCircle size={14} />;
+interface DeptRow {
+  name: string;
+  count: number;
+  percent: number;
+  color: string;
 }
 
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+interface ActivityItem {
+  id: string;
+  action: string;
+  name: string;
+  time: string;
+  type: 'join' | 'leave' | 'payroll' | 'review' | 'exit';
+}
 
-const energyData = [
-  { time: '00:00', power: 22.1 },
-  { time: '04:00', power: 19.5 },
-  { time: '08:00', power: 26.2 },
-  { time: '12:00', power: 34.5 },
-  { time: '16:00', power: 32.1 },
-  { time: '20:00', power: 24.5 },
+// ─ Skeleton component
+function Skeleton({ h = 16, w = '100%', radius = 6 }: { h?: number; w?: number | string; radius?: number }) {
+  return (
+    <div
+      className="skeleton-box"
+      style={{ height: h, width: w, borderRadius: radius }}
+    />
+  );
+}
+
+// ─ Count-up hook
+function useCountUp(target: number, duration = 1200, loading = false) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (loading) { setValue(0); return; }
+    let start = 0;
+    const step = target / (duration / 16);
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) { setValue(target); clearInterval(timer); }
+      else setValue(Math.floor(start));
+    }, 16);
+    return () => clearInterval(timer);
+  }, [target, duration, loading]);
+  return value;
+}
+
+function KPIWidget({ card }: { card: KPICard }) {
+  const displayVal = useCountUp(card.value, 1000, card.loading);
+  const isPositive = card.change >= 0;
+  return (
+    <div className="kpi-card card-premium">
+      <div className="kpi-header">
+        <span className="kpi-icon" style={{ background: card.color + '18', color: card.color }}>
+          {card.icon}
+        </span>
+        <span className={`kpi-change ${isPositive ? 'up' : 'down'}`}>
+          {isPositive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+          {Math.abs(card.change)}%
+        </span>
+      </div>
+      {card.loading ? (
+        <>
+          <Skeleton h={32} w={80} />
+          <Skeleton h={12} w={120} />
+        </>
+      ) : (
+        <>
+          <div className="kpi-value">
+            {displayVal}{card.unit}
+          </div>
+          <div className="kpi-label">{card.label}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const DEPT_DATA: DeptRow[] = [
+  { name: 'Engineering', count: 42, percent: 32, color: '#6366F1' },
+  { name: 'Sales', count: 28, percent: 21, color: '#10B981' },
+  { name: 'Operations', count: 24, percent: 18, color: '#F59E0B' },
+  { name: 'HR & Admin', count: 18, percent: 14, color: '#8B5CF6' },
+  { name: 'Finance', count: 12, percent: 9, color: '#06B6D4' },
+  { name: 'Marketing', count: 8, percent: 6, color: '#F43F5E' },
 ];
 
-const SkeletonDashboard = () => (
-  <div className="mission-control-container">
-    <header className="mission-control-header">
-      <div>
-        <div className="skeleton-box" style={{ width: '280px', height: '36px', marginBottom: '8px' }} />
-        <div className="skeleton-box" style={{ width: '200px', height: '18px' }} />
-      </div>
-      <div className="skeleton-box" style={{ width: '120px', height: '36px', borderRadius: '8px' }} />
-    </header>
-    <div className="dashboard-layout-grid">
-      <div className="dashboard-main-strip">
-        <div className="health-summary-row">
-          <div className="skeleton-box" style={{ width: '100%', height: '180px', borderRadius: '16px' }} />
-          <div className="quick-status-grid">
-             <div className="skeleton-box" style={{ height: '85px', borderRadius: '16px' }} />
-             <div className="skeleton-box" style={{ height: '85px', borderRadius: '16px' }} />
-             <div className="skeleton-box" style={{ height: '85px', borderRadius: '16px' }} />
-             <div className="skeleton-box" style={{ height: '85px', borderRadius: '16px' }} />
-          </div>
-        </div>
-        <div className="skeleton-box" style={{ height: '360px', borderRadius: '16px' }} />
-        <div className="skeleton-box" style={{ height: '200px', borderRadius: '16px' }} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-        <div className="skeleton-box" style={{ height: '180px', borderRadius: '16px' }} />
-        <div className="skeleton-box" style={{ height: '300px', borderRadius: '16px' }} />
-        <div className="skeleton-box" style={{ height: '150px', borderRadius: '16px' }} />
-        <div className="skeleton-box" style={{ height: '180px', borderRadius: '16px' }} />
-      </div>
-    </div>
-  </div>
-);
+const ACTIVITY: ActivityItem[] = [
+  { id: '1', action: 'joined', name: 'Priya Sharma', time: '2h ago', type: 'join' },
+  { id: '2', action: 'payroll processed for', name: 'March 2026', time: '5h ago', type: 'payroll' },
+  { id: '3', action: 'on leave', name: 'Arjun Mehta', time: '1d ago', type: 'leave' },
+  { id: '4', action: 'performance review for', name: 'Q1 2026', time: '2d ago', type: 'review' },
+  { id: '5', action: 'offboarded', name: 'Kavitha R.', time: '3d ago', type: 'exit' },
+];
 
-export default function Dashboard() {
-  const { user } = useAuth();
-  const { data: summary, error } = useSWR('/assets/summary', fetcher, { refreshInterval: 5000 });
-  const [telemetry, setTelemetry] = useState({ globalEnergyUsage: 24.5, activeConnections: 0, temperatureStatus: 'HEALTHY' });
+const ACTIVITY_COLORS: Record<string, string> = {
+  join: '#10B981', leave: '#F59E0B', payroll: '#6366F1',
+  review: '#8B5CF6', exit: '#F43F5E',
+};
+
+export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    socket.connect();
-    socket.on('telemetryUpdate', (data) => {
-      // Mock data from backend gives power in thousands (e.g. 4200 kW), let's scale it for UI (e.g. 42.0)
-      setTelemetry({
-        globalEnergyUsage: parseFloat((data.globalEnergyUsage / 100).toFixed(1)),
-        activeConnections: data.activeConnections,
-        temperatureStatus: data.temperatureStatus
-      });
-    });
-
-    return () => {
-      socket.disconnect();
-    };
+    const t = setTimeout(() => setLoading(false), 1400);
+    return () => clearTimeout(t);
   }, []);
 
-  if (error) {
-    return (
-      <div className="mission-control-container" style={{ justifyContent: 'center', alignItems: 'center', minHeight: '80vh', display: 'flex' }}>
-        <div className="card-premium" style={{ padding: '40px', textAlign: 'center', maxWidth: '500px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div style={{ padding: '16px', background: 'rgba(248, 81, 73, 0.1)', borderRadius: '50%', color: 'var(--accent-danger)' }}>
-            <AlertTriangle size={48} />
-          </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#fff' }}>Connection Failed</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.5, margin: 0 }}>
-            Unable to reach VaultIQ Core Services. Please ensure the backend server and PostgreSQL database are running and accessible.
-          </p>
-          <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.85rem', color: '#ff7b78', fontFamily: 'monospace' }}>
-            {error?.message || 'Network Error: Connection refused'}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!summary) return <SkeletonDashboard />;
-
-  const { stats, recentActivities, assetsByType } = summary;
-
-  // Extract counts for quick-status-grid
-  const total = stats.total || 0;
-  const assigned = stats.assigned || 0;
-  const maintenance = stats.maintenance || 0;
-  const available = total - assigned - maintenance;
+  const kpis: KPICard[] = [
+    {
+      label: 'Total Headcount',
+      value: 132,
+      change: 4.2,
+      icon: <Users size={20} />,
+      color: '#6366F1',
+      loading,
+    },
+    {
+      label: 'Attrition Rate',
+      value: 6,
+      unit: '%',
+      change: -1.3,
+      icon: <TrendingDown size={20} />,
+      color: '#F43F5E',
+      loading,
+    },
+    {
+      label: 'Open Positions',
+      value: 8,
+      change: 2,
+      icon: <Briefcase size={20} />,
+      color: '#10B981',
+      loading,
+    },
+    {
+      label: 'On Leave Today',
+      value: 11,
+      change: -2,
+      icon: <CalendarOff size={20} />,
+      color: '#F59E0B',
+      loading,
+    },
+  ];
 
   return (
-    <motion.div 
-      className="mission-control-container"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-    >
-      {/* Dashboard Top Header */}
-      <header className="mission-control-header">
+    <div className="page-container">
+      {/* Header */}
+      <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ fontSize: '2rem', fontWeight: 800 }}>
-            Good Morning, {user?.fullName?.split(' ')[0] || 'Gokul'} 👋
-          </h1>
-          <div className="header-meta">
-            <span className="pulse-dot" />
-            <span>VaultIQ Engine Live</span>
-            <span style={{ color: 'var(--text-muted)' }}>·</span>
-            <span>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</span>
-          </div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">People operations overview — real-time HR metrics</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn btn-premium-secondary" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <Activity size={14} /> System Health
-          </button>
-        </div>
-      </header>
+        <button className="btn btn-secondary" onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1200); }}>
+          <RefreshCw size={15} /> Refresh
+        </button>
+      </div>
 
-      {/* Main Layout Grid */}
-      <div className="dashboard-layout-grid">
-        {/* Main Column */}
-        <div className="dashboard-main-strip">
-          {/* Health Score & Status overview */}
-          <div className="health-summary-row">
-            {/* Health dial */}
-            <div className="health-score-card card-premium">
-              <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '12px' }}>Organization Health</span>
-              <div className="health-radial-wrap">
-                <svg width="110" height="110" viewBox="0 0 36 36">
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="rgba(255,255,255,0.04)"
-                    strokeWidth="3"
+      {/* KPI Row */}
+      <div className="kpi-grid">
+        {kpis.map((k) => <KPIWidget key={k.label} card={k} />)}
+      </div>
+
+      {/* Mid row: dept table + activity */}
+      <div className="dashboard-mid">
+        {/* Department breakdown */}
+        <div className="card-premium dept-card">
+          <h3 className="widget-title">Headcount by Department</h3>
+          {loading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ marginBottom: 14 }}>
+                <Skeleton h={12} w={`${60 + i * 5}%`} />
+                <div style={{ marginTop: 6 }}><Skeleton h={8} w="100%" radius={4} /></div>
+              </div>
+            ))
+          ) : (
+            <table className="dept-table">
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Headcount</th>
+                  <th style={{ width: '40%' }}>Distribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {DEPT_DATA.map((d) => (
+                  <tr key={d.name}>
+                    <td><span className="dept-dot" style={{ background: d.color }} />{d.name}</td>
+                    <td className="font-mono">{d.count}</td>
+                    <td>
+                      <div className="bar-wrap">
+                        <div
+                          className="bar-fill"
+                          style={{ width: `${d.percent}%`, background: d.color }}
+                        />
+                        <span className="bar-pct">{d.percent}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Activity feed */}
+        <div className="card-premium activity-card">
+          <h3 className="widget-title">Recent Activity</h3>
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="activity-skeleton">
+                <Skeleton h={32} w={32} radius={50} />
+                <div style={{ flex: 1 }}>
+                  <Skeleton h={12} w="80%" />
+                  <div style={{ marginTop: 5 }}><Skeleton h={10} w="50%" /></div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <ul className="activity-list">
+              {ACTIVITY.map((a) => (
+                <li key={a.id} className="activity-item">
+                  <div
+                    className="activity-dot"
+                    style={{ background: ACTIVITY_COLORS[a.type] }}
                   />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="var(--accent-success)"
-                    strokeDasharray="98, 100"
-                    strokeWidth="3.2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="health-percentage">98%</div>
-              </div>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>All systems performing within spec</span>
-            </div>
-
-            {/* Quick Status Cards */}
-            <div className="quick-status-grid">
-              <div className="quick-status-card card-premium">
-                <div className="status-card-header">
-                  <span>ACTIVE</span>
-                  <Users size={14} style={{ color: 'var(--accent-primary)' }} />
-                </div>
-                <div className="status-card-val active">{assigned}</div>
-              </div>
-              <div className="quick-status-card card-premium">
-                <div className="status-card-header">
-                  <span>AVAILABLE</span>
-                  <Package size={14} style={{ color: 'var(--accent-success)' }} />
-                </div>
-                <div className="status-card-val" style={{ color: 'var(--accent-success)' }}>{available}</div>
-              </div>
-              <div className="quick-status-card card-premium">
-                <div className="status-card-header">
-                  <span>CRITICAL</span>
-                  <AlertTriangle size={14} style={{ color: 'var(--accent-danger)' }} />
-                </div>
-                <div className="status-card-val critical">{maintenance}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Interactive 3D Digital Twin Office Preview */}
-          <section className="interactive-twin-section card-premium">
-            <div className="interactive-twin-header">
-              <h2 className="interactive-twin-title">
-                <Activity size={18} style={{ color: 'var(--accent-primary)' }} />
-                Digital Twin Server Room (Visual Telemetry)
-              </h2>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '12px' }}>
-                Live 3D Render
-              </span>
-            </div>
-            <div className="mini-twin-viewport">
-              <DigitalTwin status={telemetry.temperatureStatus as any} type="SERVER" showPathfinding={true} showHeatmap={true} />
-            </div>
-          </section>
-
-          {/* AI recommendations & suggestion block */}
-          <section className="ai-insights-panel card-premium glow-border">
-            <h2 className="ai-insights-header">
-              <Sparkles size={18} />
-              AI Operations Assistant Insights
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="ai-suggestion-item">
-                <strong>⚡ AI Incident Summary: Thermal Spike Warning</strong>
-                <span>
-                  Dell PowerEdge R750 (tag `VIQ-SV-001`) in R&D Lab is reaching 95°C causing high thermal throttling. Heuristics show fan 3 failure. We recommend scheduling immediate cleaning and fan replacement before node degradation.
-                </span>
-              </div>
-              <div className="ai-suggestion-item">
-                <strong>🔮 AI Procurement Recommendation</strong>
-                <span>
-                  A request for "200 laptops under ₹70 lakh" was processed. AI recommends Lenovo ThinkPad L14 Gen 4 at ₹32,000 each (Total ₹64 lakh) leaving ₹6 lakh headroom. Expected lifecycle: 3 years.
-                </span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* Right Sidebar Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-          {/* Today's Alerts */}
-          <section className="card-premium" style={{ padding: '24px' }}>
-            <h2 className="section-title" style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={16} style={{ color: 'var(--accent-warning)' }} />
-              Today's Alerts
-            </h2>
-            <ul className="alerts-list">
-              <li className="alert-item">
-                <div className="alert-icon critical"><AlertTriangle size={14} /></div>
-                <div className="alert-details">
-                  <span className="alert-title font-mono">PowerEdge R750 Thermal Spike</span>
-                  <span className="alert-time">High warning · 10m ago</span>
-                </div>
-              </li>
-              <li className="alert-item">
-                <div className="alert-icon warning"><Info size={14} /></div>
-                <div className="alert-details">
-                  <span className="alert-title font-mono">MacBook Pro M3 Max Checkout</span>
-                  <span className="alert-time">Custody assignment · 2h ago</span>
-                </div>
-              </li>
-            </ul>
-          </section>
-
-          {/* Recent Activity Logs */}
-          <section className="card-premium" style={{ padding: '24px' }}>
-            <h2 className="section-title" style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '16px' }}>
-              Recent Audit Trails
-            </h2>
-            <ul className="activity-list" style={{ gap: '14px' }}>
-              {recentActivities.slice(0, 4).map((act: any) => (
-                <li key={act.id} className="activity-item" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '0' }}>
-                  <span className={`activity-icon act-${act.icon}`} style={{ width: '28px', height: '28px', borderRadius: '8px' }}>
-                    {activityIcon(act.icon)}
-                  </span>
-                  <div className="activity-details">
-                    <span className="activity-name font-mono" style={{ fontSize: '0.82rem', fontWeight: 600 }}>{act.action}</span>
-                    <span className="activity-user" style={{ fontSize: '0.72rem' }}>by {act.user}</span>
+                  <div className="activity-body">
+                    <span className="activity-text">
+                      <strong>{a.name}</strong> {a.action}
+                    </span>
+                    <span className="activity-time">{a.time}</span>
                   </div>
-                  <span className="activity-time" style={{ fontSize: '0.72rem' }}>{timeAgo(act.time)}</span>
                 </li>
               ))}
             </ul>
-          </section>
-
-          {/* Platform Quick links */}
-          <section className="card-premium" style={{ padding: '24px' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>Compliance Summary</h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '14px' }}>
-              <Shield size={16} style={{ color: 'var(--accent-success)' }} />
-              <span className="font-mono" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Ledger Cryptochain Secure (SHA-256)</span>
-            </div>
-            <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)', marginBottom: '14px' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>ISO 27001 Status</span>
-                <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>COMPLIANT</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>SOC2 Status</span>
-                <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>COMPLIANT</span>
-              </div>
-            </div>
-          </section>
-
-          {/* ESG & Sustainability Tracker */}
-          <section className="card-premium glow-border" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Leaf size={16} style={{ color: 'var(--accent-success)' }} />
-              ESG & Energy Tracking
-            </h3>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Current Power Draw</span>
-                <span className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff' }}>{telemetry.globalEnergyUsage} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>kW/h</span></span>
-              </div>
-              <div style={{ background: 'rgba(0, 230, 118, 0.1)', color: 'var(--accent-success)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
-                Live Sync
-              </div>
-            </div>
-            
-            <div style={{ height: '100px', width: '100%', marginTop: 'auto' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={energyData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent-success)" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="var(--accent-success)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <Tooltip 
-                    contentStyle={{ background: 'rgba(11, 19, 43, 0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
-                  <Area type="monotone" dataKey="power" stroke="var(--accent-success)" strokeWidth={2} fillOpacity={1} fill="url(#colorPower)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '12px', textAlign: 'right' }}>
-              Target: 40 kW/h
-            </div>
-          </section>
+          )}
         </div>
       </div>
-    </motion.div>
+
+      <style>{`
+        .page-container { padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; max-width: 1400px; }
+        .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+        .page-title { font-size: 1.6rem; font-weight: 800; font-family: var(--font-sora, sans-serif); color: var(--text-primary); margin: 0; }
+        .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0; }
+        .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+        .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.09); color: var(--text-primary); }
+
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+        .kpi-card { padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; }
+        .kpi-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+        .kpi-change { display: flex; align-items: center; gap: 3px; font-size: 0.78rem; font-weight: 700; border-radius: 20px; padding: 3px 8px; }
+        .kpi-change.up { background: rgba(16,185,129,0.1); color: #10B981; }
+        .kpi-change.down { background: rgba(244,63,94,0.1); color: #F43F5E; }
+        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--text-primary); font-family: var(--font-sora, sans-serif); line-height: 1; }
+        .kpi-label { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .dashboard-mid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+        @media (max-width: 900px) { .dashboard-mid { grid-template-columns: 1fr; } }
+        .dept-card { padding: 22px; }
+        .activity-card { padding: 22px; }
+        .widget-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 16px; }
+
+        .dept-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+        .dept-table th { color: var(--text-muted); font-weight: 600; text-align: left; padding: 0 0 10px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-color); }
+        .dept-table td { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-secondary); vertical-align: middle; }
+        .dept-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+        .bar-wrap { display: flex; align-items: center; gap: 8px; }
+        .bar-fill { height: 6px; border-radius: 3px; transition: width 0.8s ease; }
+        .bar-pct { font-size: 0.72rem; color: var(--text-muted); min-width: 32px; }
+        .font-mono { font-family: var(--font-mono, monospace); font-size: 0.88rem; color: var(--text-primary); font-weight: 600; }
+
+        .activity-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
+        .activity-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+        .activity-body { display: flex; flex-direction: column; gap: 2px; }
+        .activity-text { font-size: 0.83rem; color: var(--text-secondary); }
+        .activity-text strong { color: var(--text-primary); }
+        .activity-time { font-size: 0.72rem; color: var(--text-muted); }
+        .activity-skeleton { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
+      `}</style>
+    </div>
   );
 }
