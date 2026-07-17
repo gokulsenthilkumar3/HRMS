@@ -72,7 +72,7 @@ Every change of custody or maintenance record is cryptographically anchored to a
 
 1. **Clone the Repo**:
    ```bash
-   git clone <YOUR_GITHUB_REPO_URL>
+   git clone https://github.com/gokulsenthilkumar3/HRMS.git
    ```
 
 2. **Environment Setup**:
