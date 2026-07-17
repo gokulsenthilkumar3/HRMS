@@ -1,91 +1,157 @@
 'use client';
-/**
- * AuthContext — authentication state & actions for HRMS.
- * Fixes Issue #2: Proper role types aligned with usePermission hook.
- * Token key unified to 'hrms_access_token'.
- */
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, setAuthToken, clearAuthToken } from '../lib/api';
 
-export type HRMSRole = 'superAdmin' | 'hrManager' | 'teamLead' | 'employee';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+export type UserRole = 'ADMIN' | 'MANAGER' | 'USER';
 
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
-  role: HRMSRole;
-  department?: string;
-  avatarUrl?: string;
+  role: UserRole;
+  department?: string | null;
+  employeeId?: string | null;
+  avatarUrl?: string | null;
 }
 
-export interface AuthContextType {
+interface AuthContextValue {
   user: AuthUser | null;
+  token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  isAdmin: boolean;
+  isManager: boolean;
+  can: (action: 'read' | 'write' | 'delete', resource: string) => boolean;
 }
 
-const STORAGE_KEY = 'hrms_user';
+const AuthContext = createContext<AuthContextValue | null>(null);
 
-export const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  login: async () => {},
-  logout: () => {},
-});
+// ---- RBAC permission map ----
+const PERMISSIONS: Record<UserRole, Record<string, string[]>> = {
+  ADMIN: {
+    employees: ['read', 'write', 'delete'],
+    payroll:   ['read', 'write', 'delete'],
+    reports:   ['read', 'write'],
+    settings:  ['read', 'write'],
+    compliance:['read', 'write'],
+    recruitment:['read','write','delete'],
+  },
+  MANAGER: {
+    employees:  ['read', 'write'],
+    payroll:    ['read'],
+    reports:    ['read'],
+    recruitment:['read','write'],
+    compliance: ['read'],
+  },
+  USER: {
+    employees:  ['read'],
+    payroll:    ['read'],
+  },
+};
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Rehydrate from localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setUser(JSON.parse(stored));
-        const token = document.cookie
-          .split('; ')
-          .find((r) => r.startsWith('hrms_token='))
-          ?.split('=')[1];
-        if (token) setAuthToken(token);
+      const storedToken = localStorage.getItem('hrms_access_token');
+      const storedUser  = localStorage.getItem('hrms_user');
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
       }
     } catch {
-      // ignore parse errors
+      /* ignore parse errors */
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const data = await apiFetch('/auth/dev-login', {
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
     });
-    const { access_token, user: loggedInUser } = data;
-    setAuthToken(access_token);
-    document.cookie = `hrms_token=${access_token}; path=/; max-age=86400; SameSite=Strict`;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
-    setUser(loggedInUser);
-    router.push('/dashboard');
-  };
 
-  const logout = () => {
-    clearAuthToken();
-    document.cookie = 'hrms_token=; path=/; max-age=0';
-    localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
-    router.push('/login');
-  };
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Invalid email or password');
+    }
+
+    const data = await res.json();
+    const { access_token, refresh_token, user: authUser } = data;
+
+    localStorage.setItem('hrms_access_token', access_token);
+    localStorage.setItem('hrms_refresh_token', refresh_token);
+    localStorage.setItem('hrms_user', JSON.stringify(authUser));
+
+    setToken(access_token);
+    setUser(authUser);
+    router.push('/dashboard');
+  }, [router]);
+
+  const logout = useCallback(async () => {
+    try {
+      if (token) {
+        await fetch(`${API}/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch { /* ignore */ } finally {
+      localStorage.removeItem('hrms_access_token');
+      localStorage.removeItem('hrms_refresh_token');
+      localStorage.removeItem('hrms_user');
+      setUser(null);
+      setToken(null);
+      router.push('/login');
+    }
+  }, [token, router]);
+
+  const can = useCallback(
+    (action: 'read' | 'write' | 'delete', resource: string): boolean => {
+      if (!user) return false;
+      const perms = PERMISSIONS[user.role]?.[resource] ?? [];
+      return perms.includes(action);
+    },
+    [user],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        logout,
+        isAdmin:   user?.role === 'ADMIN',
+        isManager: user?.role === 'MANAGER' || user?.role === 'ADMIN',
+        can,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
 }
