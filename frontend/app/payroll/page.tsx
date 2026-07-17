@@ -1,203 +1,134 @@
 'use client';
 import React, { useState } from 'react';
-import { DollarSign, Download, Play, CheckCircle, AlertCircle } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { DollarSign, Download, CheckCircle, FileText, TrendingUp } from 'lucide-react';
 
-interface Employee {
-  id: string;
-  name: string;
-  department: string;
-  ctc: number;
-  basic: number;
-  hra: number;
-  pf: number;
-  tax: number;
-  takeHome: number;
-  status: 'processed' | 'pending' | 'hold';
-}
-
-const PAYROLL_DATA: Employee[] = [
-  { id: 'EMP001', name: 'Priya Sharma',   department: 'Engineering', ctc: 1440000, basic: 72000, hra: 28800, pf: 8640, tax: 15420, takeHome: 75940, status: 'processed' },
-  { id: 'EMP002', name: 'Arjun Mehta',    department: 'Sales',       ctc: 780000,  basic: 39000, hra: 15600, pf: 4680, tax: 4200,  takeHome: 46520, status: 'pending' },
-  { id: 'EMP003', name: 'Kavitha R.',     department: 'HR & Admin',  ctc: 1080000, basic: 54000, hra: 21600, pf: 6480, tax: 9200,  takeHome: 59720, status: 'processed' },
-  { id: 'EMP004', name: 'Rahul Nair',     department: 'Finance',     ctc: 660000,  basic: 33000, hra: 13200, pf: 3960, tax: 2800,  takeHome: 39440, status: 'hold' },
-  { id: 'EMP005', name: 'Divya Krishnan', department: 'Design',      ctc: 960000,  basic: 48000, hra: 19200, pf: 5760, tax: 6900,  takeHome: 54540, status: 'pending' },
-];
-
-const STATUS_META = {
-  processed: { label: 'Processed', color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
-  pending:   { label: 'Pending',   color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
-  hold:      { label: 'On Hold',   color: '#F43F5E', bg: 'rgba(244,63,94,0.1)' },
-};
-
-const TAX_SLABS_FY26 = [
-  { range: '₹0 – 4 Lakh',       rate: '0%',  tax: 0 },
-  { range: '₹4 – 8 Lakh',       rate: '5%',  tax: 20000 },
-  { range: '₹8 – 12 Lakh',      rate: '10%', tax: 40000 },
-  { range: '₹12 – 16 Lakh',     rate: '15%', tax: 60000 },
-  { range: '₹16 – 20 Lakh',     rate: '20%', tax: 80000 },
-  { range: '₹20 – 24 Lakh',     rate: '25%', tax: 100000 },
-  { range: 'Above ₹24 Lakh',    rate: '30%', tax: null },
-];
-
-function fmt(n: number) {
-  return '₹' + n.toLocaleString('en-IN');
-}
-
-export default function PayrollPage() {
-  const [runConfirm, setRunConfirm] = useState(false);
-  const [ran, setRan] = useState(false);
-
-  const totalGross = PAYROLL_DATA.reduce((s, e) => s + e.basic + e.hra, 0);
-  const totalTakeHome = PAYROLL_DATA.reduce((s, e) => s + e.takeHome, 0);
-  const totalTax = PAYROLL_DATA.reduce((s, e) => s + e.tax, 0);
-
-  const handleRun = () => {
-    setRunConfirm(false);
-    setRan(true);
-  };
-
+function TaxComparison({ tax }: { tax: any }) {
+  if (!tax) return null;
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Payroll</h1>
-          <p className="page-subtitle">June 2026 · {PAYROLL_DATA.length} employees</p>
+    <div className="tax-comp">
+      <h4>Tax Regime Comparison</h4>
+      <div className="tax-grid">
+        <div className={`tax-card ${tax.recommended==='NEW'?'recommended':''}`}>
+          <div className="tax-regime">New Regime {tax.recommended==='NEW'&&<span className="rec-badge">Recommended</span>}</div>
+          <div className="tax-annual">₹{tax.newRegime.annualTax.toLocaleString('en-IN')}/yr</div>
+          <div className="tax-monthly">₹{tax.newRegime.monthlyTax.toLocaleString('en-IN')}/mo TDS</div>
         </div>
-        <div className="header-actions">
-          <button className="btn btn-secondary"><Download size={15} /> Export</button>
-          {!ran ? (
-            <button className="btn btn-primary" onClick={() => setRunConfirm(true)}>
-              <Play size={15} /> Process Payrun
-            </button>
-          ) : (
-            <span className="badge-success"><CheckCircle size={14} /> Payrun Processed</span>
-          )}
+        <div className={`tax-card ${tax.recommended==='OLD'?'recommended':''}`}>
+          <div className="tax-regime">Old Regime {tax.recommended==='OLD'&&<span className="rec-badge">Recommended</span>}</div>
+          <div className="tax-annual">₹{tax.oldRegime.annualTax.toLocaleString('en-IN')}/yr</div>
+          <div className="tax-monthly">₹{tax.oldRegime.monthlyTax.toLocaleString('en-IN')}/mo TDS</div>
         </div>
       </div>
-
-      {/* KPI strip */}
-      <div className="pay-kpi-row">
-        <div className="pay-kpi card-premium">
-          <div className="pay-kpi-label">Gross Payroll</div>
-          <div className="pay-kpi-value">{fmt(totalGross)}</div>
-        </div>
-        <div className="pay-kpi card-premium">
-          <div className="pay-kpi-label">Net Take-Home</div>
-          <div className="pay-kpi-value">{fmt(totalTakeHome)}</div>
-        </div>
-        <div className="pay-kpi card-premium">
-          <div className="pay-kpi-label">Total TDS</div>
-          <div className="pay-kpi-value">{fmt(totalTax)}</div>
-        </div>
-        <div className="pay-kpi card-premium">
-          <div className="pay-kpi-label">PF Contribution</div>
-          <div className="pay-kpi-value">{fmt(PAYROLL_DATA.reduce((s, e) => s + e.pf, 0))}</div>
-        </div>
-      </div>
-
-      {/* Payroll table */}
-      <div className="card-premium table-wrap">
-        <table className="pay-table">
-          <thead>
-            <tr>
-              <th>Employee</th><th>Department</th><th>Basic</th><th>HRA</th>
-              <th>PF (Emp.)</th><th>TDS</th><th>Take-Home</th><th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {PAYROLL_DATA.map((e) => {
-              const meta = STATUS_META[e.status];
-              return (
-                <tr key={e.id} className="pay-row">
-                  <td><div className="emp-name">{e.name}</div><div className="emp-id">{e.id}</div></td>
-                  <td>{e.department}</td>
-                  <td className="font-mono">{fmt(e.basic)}</td>
-                  <td className="font-mono">{fmt(e.hra)}</td>
-                  <td className="font-mono">{fmt(e.pf)}</td>
-                  <td className="font-mono" style={{ color: '#F43F5E' }}>{fmt(e.tax)}</td>
-                  <td className="font-mono" style={{ color: '#10B981', fontWeight: 700 }}>{fmt(e.takeHome)}</td>
-                  <td>
-                    <span className="status-pill" style={{ color: meta.color, background: meta.bg }}>
-                      {meta.label}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Tax slab reference */}
-      <div className="card-premium tax-card">
-        <h3 className="widget-title">New Tax Regime — FY 2025-26</h3>
-        <div className="slab-grid">
-          {TAX_SLABS_FY26.map((s) => (
-            <div key={s.range} className="slab-item">
-              <div className="slab-range">{s.range}</div>
-              <div className="slab-rate">{s.rate}</div>
-            </div>
-          ))}
-        </div>
-        <p className="slab-note">Standard deduction of ₹75,000 applies. Surcharge of 10% for income above ₹50L, 15% above ₹1Cr.</p>
-      </div>
-
-      {/* Confirm modal */}
-      {runConfirm && (
-        <div className="modal-backdrop" onClick={() => setRunConfirm(false)}>
-          <div className="confirm-box card-premium" onClick={(e) => e.stopPropagation()}>
-            <AlertCircle size={32} color="#F59E0B" />
-            <h3>Process Payrun for June 2026?</h3>
-            <p>This will initiate salary disbursement for {PAYROLL_DATA.length} employees totalling <strong>{fmt(totalTakeHome)}</strong>.</p>
-            <div className="confirm-actions">
-              <button className="btn btn-ghost" onClick={() => setRunConfirm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleRun}>Yes, Process</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        .page-container { padding: 28px 32px; display: flex; flex-direction: column; gap: 22px; max-width: 1400px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-        .page-title { font-size: 1.6rem; font-weight: 800; font-family: var(--font-sora, sans-serif); color: var(--text-primary); margin: 0; }
-        .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0; }
-        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
-        .btn-primary { background: #6366F1; color: #fff; } .btn-primary:hover { background: #4F46E5; }
-        .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); }
-        .btn-ghost { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
-        .badge-success { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 8px; background: rgba(16,185,129,0.1); color: #10B981; font-size: 0.83rem; font-weight: 700; }
-
-        .pay-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-        .pay-kpi { padding: 20px; display: flex; flex-direction: column; gap: 6px; }
-        .pay-kpi-label { font-size: 0.78rem; color: var(--text-secondary); }
-        .pay-kpi-value { font-size: 1.5rem; font-weight: 800; font-family: var(--font-sora, sans-serif); color: var(--text-primary); }
-
-        .table-wrap { border-radius: 12px; overflow: auto; }
-        .pay-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; white-space: nowrap; }
-        .pay-table th { background: rgba(255,255,255,0.02); color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
-        .pay-table td { padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--text-secondary); vertical-align: middle; }
-        .pay-row:last-child td { border-bottom: none; }
-        .emp-name { font-weight: 600; color: var(--text-primary); font-size: 0.875rem; }
-        .emp-id { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; font-family: var(--font-mono, monospace); }
-        .font-mono { font-family: var(--font-mono, monospace); }
-        .status-pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
-
-        .tax-card { padding: 22px; }
-        .widget-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 14px; }
-        .slab-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-        .slab-item { background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; min-width: 130px; }
-        .slab-range { font-size: 0.78rem; color: var(--text-secondary); }
-        .slab-rate { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); margin-top: 3px; font-family: var(--font-sora, sans-serif); }
-        .slab-note { font-size: 0.75rem; color: var(--text-muted); margin: 12px 0 0; }
-
-        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); z-index: 1100; display: flex; align-items: center; justify-content: center; }
-        .confirm-box { padding: 32px; max-width: 400px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-        .confirm-box h3 { font-size: 1rem; font-weight: 800; color: var(--text-primary); margin: 0; font-family: var(--font-sora, sans-serif); }
-        .confirm-box p { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
-        .confirm-actions { display: flex; gap: 10px; margin-top: 8px; }
-      `}</style>
+      <p className="tax-saving">💡 You save <strong>₹{tax.saving.toLocaleString('en-IN')}</strong> with the {tax.recommended} regime</p>
     </div>
   );
 }
+
+function PayslipCard({ p }: { p: any }) {
+  return (
+    <div className="payslip-card">
+      <div className="ps-header">
+        <div><div className="ps-period">{p.period}</div><div className="ps-status" data-status={p.status}>{p.status}</div></div>
+        <div className="ps-net">₹{p.netAmount?.toLocaleString('en-IN')}</div>
+      </div>
+      <div className="ps-breakdown">
+        <div className="ps-row"><span>Basic</span><span>₹{p.basicSalary?.toLocaleString('en-IN')}</span></div>
+        <div className="ps-row"><span>HRA</span><span>₹{p.hra?.toLocaleString('en-IN')}</span></div>
+        <div className="ps-row"><span>Allowances</span><span>₹{p.allowances?.toLocaleString('en-IN')}</span></div>
+        <div className="ps-row deduct"><span>Deductions (PF+ESI+PT)</span><span>-₹{p.deductions?.toLocaleString('en-IN')}</span></div>
+        <div className="ps-row deduct"><span>Tax (TDS)</span><span>-₹{p.taxAmount?.toLocaleString('en-IN')}</span></div>
+        <div className="ps-row total"><span>Net Pay</span><span>₹{p.netAmount?.toLocaleString('en-IN')}</span></div>
+      </div>
+      <button className="ps-dl" onClick={()=>alert('PDF download — integrate @react-pdf/renderer')}><Download size={13}/> Download PDF</button>
+    </div>
+  );
+}
+
+export default function PayrollPage() {
+  const [basic, setBasic] = useState(80000);
+  const { data:payslips=[], isLoading } = useQuery({ queryKey:['my-payslips'], queryFn:()=>api.get<any[]>('/payroll/my'), staleTime:60_000 });
+  const calc = useMutation({ mutationFn:(b:number)=>api.post<any>('/payroll/calculate',{basicSalary:b}) });
+
+  return (
+    <div className="pay-page">
+      <h1><DollarSign size={22}/> Payroll &amp; Salary</h1>
+
+      {/* Salary Calculator */}
+      <div className="calc-card">
+        <h3><TrendingUp size={16}/> Salary &amp; Tax Calculator</h3>
+        <div className="calc-row">
+          <div className="field">
+            <label>Basic Salary (₹/month)</label>
+            <input type="number" value={basic} min={10000} step={1000} onChange={e=>setBasic(+e.target.value)}/>
+          </div>
+          <button className="btn-calc" onClick={()=>calc.mutate(basic)} disabled={calc.isPending}>Calculate</button>
+        </div>
+        {calc.data&&(
+          <>
+            <div className="salary-breakdown">
+              {[['Basic',calc.data.salary.basic],['HRA',calc.data.salary.hra],['DA',calc.data.salary.da],['TA',calc.data.salary.ta],['Special',calc.data.salary.special]].map(([l,v])=>(
+                <div key={l} className="sb-row"><span>{l}</span><span>₹{Number(v).toLocaleString('en-IN')}</span></div>
+              ))}
+              <div className="sb-row gross"><span>Gross</span><span>₹{calc.data.salary.gross?.toLocaleString('en-IN')}</span></div>
+              <div className="sb-row deduct"><span>PF (12%)</span><span>-₹{calc.data.salary.pf?.toLocaleString('en-IN')}</span></div>
+              <div className="sb-row deduct"><span>ESI</span><span>-₹{calc.data.salary.esi?.toLocaleString('en-IN')}</span></div>
+              <div className="sb-row deduct"><span>PT</span><span>-₹{calc.data.salary.pt?.toLocaleString('en-IN')}</span></div>
+            </div>
+            <TaxComparison tax={calc.data.tax}/>
+          </>
+        )}
+      </div>
+
+      {/* Payslips */}
+      <h3 className="section-h">My Payslips</h3>
+      {isLoading ? <div className="skeleton-list">{Array(3).fill(0).map((_,i)=><div key={i} className="payslip-skeleton"/>)}</div>
+        : payslips.length===0 ? <div className="empty">No payslips found</div>
+        : <div className="payslips-grid">{payslips.map(p=><PayslipCard key={p.id} p={p}/>)}</div>}
+
+      <style>{payStyles}</style>
+    </div>
+  );
+}
+
+const payStyles=`
+.pay-page{padding:28px 32px;display:flex;flex-direction:column;gap:24px;max-width:960px;}
+.pay-page h1{display:flex;align-items:center;gap:10px;font-family:var(--font-sora,sans-serif);font-size:1.5rem;font-weight:800;color:#F0F2FF;margin:0;}
+.section-h{font-size:0.9rem;font-weight:700;color:#9BA3C0;text-transform:uppercase;letter-spacing:0.06em;margin:0;}
+.calc-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:18px;}
+.calc-card h3{display:flex;align-items:center;gap:8px;font-size:0.95rem;font-weight:700;color:#F0F2FF;margin:0;}
+.calc-row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;}
+.field{display:flex;flex-direction:column;gap:6px;} .field label{font-size:0.78rem;font-weight:600;color:#9BA3C0;}
+.field input{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:10px 14px;color:#F0F2FF;font-size:0.88rem;outline:none;width:200px;}
+.btn-calc{background:linear-gradient(135deg,#6366F1,#8B5CF6);color:#fff;border:none;border-radius:10px;padding:11px 22px;font-size:0.85rem;font-weight:700;cursor:pointer;height:40px;align-self:flex-end;}
+.salary-breakdown{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;}
+.sb-row{display:flex;justify-content:space-between;background:rgba(255,255,255,0.03);border-radius:8px;padding:8px 12px;font-size:0.82rem;color:#9BA3C0;}
+.sb-row span:last-child{color:#F0F2FF;font-weight:700;} .sb-row.gross{background:rgba(99,102,241,0.08);color:#818CF8;} .sb-row.deduct{color:#F43F5E;} .sb-row.deduct span:last-child{color:#F43F5E;}
+.tax-comp{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}
+.tax-comp h4{font-size:0.82rem;font-weight:700;color:#9BA3C0;text-transform:uppercase;letter-spacing:0.05em;margin:0;}
+.tax-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.tax-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:4px;}
+.tax-card.recommended{border-color:rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);}
+.tax-regime{font-size:0.78rem;font-weight:700;color:#9BA3C0;display:flex;align-items:center;gap:8px;}
+.rec-badge{background:#6366F1;color:#fff;font-size:0.6rem;padding:2px 7px;border-radius:20px;}
+.tax-annual{font-size:1.1rem;font-weight:800;color:#F0F2FF;font-family:var(--font-sora,sans-serif);}
+.tax-monthly{font-size:0.72rem;color:#9BA3C0;}
+.tax-saving{font-size:0.8rem;color:#9BA3C0;margin:0;}
+.payslips-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
+.payslip-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;}
+.ps-header{display:flex;justify-content:space-between;align-items:flex-start;}
+.ps-period{font-size:0.82rem;font-weight:700;color:#F0F2FF;}
+.ps-status{font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:20px;margin-top:4px;width:fit-content;}
+.ps-status[data-status='PAID']{background:rgba(16,185,129,0.1);color:#10B981;}
+.ps-status[data-status='DRAFT']{background:rgba(245,158,11,0.1);color:#F59E0B;}
+.ps-net{font-size:1.3rem;font-weight:800;color:#10B981;font-family:var(--font-sora,sans-serif);}
+.ps-breakdown{display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;}
+.ps-row{display:flex;justify-content:space-between;font-size:0.78rem;color:#9BA3C0;}
+.ps-row span:last-child{color:#F0F2FF;font-weight:600;} .ps-row.deduct span:last-child{color:#F43F5E;} .ps-row.total{font-weight:800;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px;} .ps-row.total span{color:#10B981;font-size:0.88rem;}
+.ps-dl{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);color:#9BA3C0;border-radius:8px;padding:8px 14px;font-size:0.78rem;cursor:pointer;transition:all 0.15s;} .ps-dl:hover{background:rgba(255,255,255,0.07);color:#F0F2FF;}
+.payslip-skeleton{height:180px;border-radius:14px;background:linear-gradient(90deg,rgba(255,255,255,0.03) 25%,rgba(255,255,255,0.06) 50%,rgba(255,255,255,0.03) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.empty{color:#4B5278;font-size:0.85rem;text-align:center;padding:40px;}
+.skeleton-list{display:flex;flex-direction:column;gap:12px;}
+`;
