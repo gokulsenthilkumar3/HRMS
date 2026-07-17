@@ -1,292 +1,225 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Triangle, Mail, ArrowRight, AlertCircle, Shield, BarChart2, Package } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 
-const DEMO_ACCOUNTS = [
-  { email: 'admin@company.com',   role: 'Admin',   color: '#f85149' },
-  { email: 'manager@company.com', role: 'Manager', color: '#d29922' },
-  { email: 'user@company.com',    role: 'User',    color: '#3fb950' },
-];
+// Simple client-side email+password validators
+function validateEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'Enter a valid email address';
+}
+function validatePassword(v: string) {
+  if (!v) return 'Password is required';
+  if (v.length < 8) return 'Minimum 8 characters';
+  return '';
+}
+
+// Animated floating orbs (pure CSS, no canvas needed)
+function FloatingOrbs() {
+  return (
+    <div className="orbs-wrapper" aria-hidden="true">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className={`orb orb-${i + 1}`} />
+      ))}
+      <style>{`
+        .orbs-wrapper { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+        .orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(60px);
+          opacity: 0.25;
+          animation: orbFloat linear infinite;
+        }
+        .orb-1 { width: 400px; height: 400px; background: #6366F1; top: -100px; left: -80px; animation-duration: 18s; }
+        .orb-2 { width: 300px; height: 300px; background: #8B5CF6; bottom: -60px; right: -60px; animation-duration: 14s; animation-delay: -5s; }
+        .orb-3 { width: 250px; height: 250px; background: #06B6D4; top: 40%; left: 50%; animation-duration: 22s; animation-delay: -9s; }
+        .orb-4 { width: 180px; height: 180px; background: #10B981; bottom: 20%; left: 10%; animation-duration: 16s; animation-delay: -3s; }
+        .orb-5 { width: 220px; height: 220px; background: #F59E0B; top: 20%; right: 15%; animation-duration: 20s; animation-delay: -12s; }
+        @keyframes orbFloat {
+          0%   { transform: translate(0, 0) scale(1); }
+          25%  { transform: translate(30px, -20px) scale(1.05); }
+          50%  { transform: translate(-10px, 30px) scale(0.95); }
+          75%  { transform: translate(20px, 10px) scale(1.02); }
+          100% { transform: translate(0, 0) scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
+  const router = useRouter();
+
   const [email, setEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [emailErr, setEmailErr] = useState('');
+  const [pwdErr, setPwdErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const [apiErr, setApiErr] = useState('');
+
+  useEffect(() => { if (user) router.replace('/dashboard'); }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
-    setError(null);
-    setLoading(true);
+    const eErr = validateEmail(email);
+    const pErr = validatePassword(password);
+    setEmailErr(eErr); setPwdErr(pErr);
+    if (eErr || pErr) return;
+
+    setLoading(true); setApiErr('');
     try {
-      await login(email.trim());
+      await login(email, password);
     } catch (err: any) {
-      setError(err.message || 'Login failed.');
+      setApiErr(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
-      {/* Left panel */}
-      <div className="login-panel-left">
-        <div className="login-brand">
-          <Triangle size={28} fill="currentColor" />
-          <span>VaultIQ</span>
-        </div>
-        <div className="login-hero">
-          <h1 className="login-hero-title">Enterprise Asset<br />Intelligence</h1>
-          <p className="login-hero-sub">Track, manage and audit your entire IT asset lifecycle from a single unified dashboard.</p>
-        </div>
-        <div className="login-features">
-          <div className="login-feature">
-            <Package size={18} />
-            <span>10+ Asset Types Supported</span>
-          </div>
-          <div className="login-feature">
-            <BarChart2 size={18} />
-            <span>Real-time Analytics & Reports</span>
-          </div>
-          <div className="login-feature">
-            <Shield size={18} />
-            <span>Role-Based Access Control</span>
+    <div className="login-bg">
+      <FloatingOrbs />
+
+      <div className="login-card">
+        {/* Brand */}
+        <div className="brand">
+          <div className="brand-icon">HR</div>
+          <div>
+            <div className="brand-name">HRMS</div>
+            <div className="brand-tagline">People Operations Platform</div>
           </div>
         </div>
+
+        <h1 className="login-heading">Welcome back</h1>
+        <p className="login-sub">Sign in to manage your workforce</p>
+
+        {apiErr && (
+          <div className="api-error">
+            <ShieldCheck size={14} /> {apiErr}
+          </div>
+        )}
+
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
+          {/* Email */}
+          <div className="field">
+            <label htmlFor="email">Work Email</label>
+            <input
+              id="email"
+              type="email"
+              placeholder="you@company.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(''); }}
+              className={emailErr ? 'input-error' : ''}
+            />
+            {emailErr && <span className="field-error">{emailErr}</span>}
+          </div>
+
+          {/* Password */}
+          <div className="field">
+            <label htmlFor="password">Password</label>
+            <div className="pwd-wrap">
+              <input
+                id="password"
+                type={showPwd ? 'text' : 'password'}
+                placeholder="Min 8 characters"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); if (pwdErr) setPwdErr(''); }}
+                className={pwdErr ? 'input-error' : ''}
+              />
+              <button
+                type="button"
+                className="pwd-toggle"
+                onClick={() => setShowPwd((s) => !s)}
+                aria-label={showPwd ? 'Hide password' : 'Show password'}
+              >
+                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {pwdErr && <span className="field-error">{pwdErr}</span>}
+          </div>
+
+          <div className="forgot-row">
+            <a href="#" className="forgot-link">Forgot password?</a>
+          </div>
+
+          <button type="submit" className="btn-login" disabled={loading}>
+            {loading ? <Loader2 size={17} className="spin" /> : 'Sign In'}
+          </button>
+        </form>
+
+        <p className="login-footer">Protected by enterprise-grade security · ISO 27001</p>
       </div>
 
-      {/* Right panel */}
-      <div className="login-panel-right">
-        <div className="login-card glass animate-slide-up">
-          <div className="login-card-header">
-            <h2 className="login-title">Sign in</h2>
-            <p className="login-subtitle">Enter your corporate email to continue.</p>
-          </div>
-
-          {error && (
-            <div className="error-banner">
-              <AlertCircle size={15} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="login-form">
-            <div className="input-group">
-              <label htmlFor="email">Email address</label>
-              <div className="input-wrapper">
-                <Mail size={16} className="input-icon" />
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  autoFocus
-                  placeholder="you@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary login-btn"
-              disabled={loading || !email.trim()}
-            >
-              {loading ? (
-                <span className="btn-spinner" />
-              ) : (
-                <>
-                  Continue
-                  <ArrowRight size={16} />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="demo-section">
-            <p className="demo-label">Demo accounts</p>
-            <div className="demo-pills">
-              {DEMO_ACCOUNTS.map(acc => (
-                <button
-                  key={acc.email}
-                  className="demo-pill"
-                  onClick={() => setEmail(acc.email)}
-                  style={{ borderColor: acc.color + '44', color: acc.color }}
-                >
-                  {acc.role}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .login-page {
+      <style>{`
+        .login-bg {
           min-height: 100vh;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
+          display: flex; align-items: center; justify-content: center;
           background: var(--bg-primary);
-        }
-        @media (max-width: 768px) {
-          .login-page { grid-template-columns: 1fr; }
-          .login-panel-left { display: none; }
-        }
-
-        /* ---- Left panel ---- */
-        .login-panel-left {
-          background: linear-gradient(160deg, #0d1117 0%, #0a0c10 100%);
-          border-right: 1px solid var(--border-color);
-          padding: 48px;
-          display: flex;
-          flex-direction: column;
-          gap: 40px;
           position: relative;
-          overflow: hidden;
-        }
-        .login-panel-left::before {
-          content: '';
-          position: absolute;
-          top: -120px;
-          left: -120px;
-          width: 400px;
-          height: 400px;
-          background: radial-gradient(circle, rgba(88,166,255,0.08), transparent 70%);
-          pointer-events: none;
-        }
-        .login-brand {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-size: 1.3rem;
-          font-weight: 800;
-          color: var(--accent-primary);
-        }
-        .login-hero-title {
-          font-size: 2.4rem;
-          font-weight: 800;
-          line-height: 1.15;
-          letter-spacing: -0.5px;
-        }
-        .login-hero-sub {
-          color: var(--text-secondary);
-          font-size: 0.95rem;
-          line-height: 1.7;
-          margin-top: 12px;
-          max-width: 340px;
-        }
-        .login-features {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-          margin-top: auto;
-        }
-        .login-feature {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          font-size: 0.875rem;
-          color: var(--text-secondary);
-        }
-        .login-feature svg { color: var(--accent-primary); flex-shrink: 0; }
-
-        /* ---- Right panel ---- */
-        .login-panel-right {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 32px;
-          background: var(--bg-primary);
+          padding: 20px;
         }
         .login-card {
-          width: 100%;
-          max-width: 400px;
-          padding: 40px;
-          border-radius: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-        .login-card-header { display: flex; flex-direction: column; gap: 6px; }
-        .login-title { font-size: 1.6rem; font-weight: 800; }
-        .login-subtitle { color: var(--text-secondary); font-size: 0.88rem; }
-
-        .error-banner {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 14px;
-          background: rgba(248,81,73,0.1);
-          border: 1px solid rgba(248,81,73,0.3);
-          border-radius: 8px;
-          color: #ff7b78;
-          font-size: 0.85rem;
-        }
-
-        .login-form { display: flex; flex-direction: column; gap: 16px; }
-        .input-group { display: flex; flex-direction: column; gap: 6px; }
-        .input-group label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
-        .input-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          padding: 0 14px;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        .input-wrapper:focus-within {
-          border-color: var(--accent-primary);
-          box-shadow: 0 0 0 3px rgba(88,166,255,0.12);
-        }
-        .input-icon { color: var(--text-muted); flex-shrink: 0; }
-        .input-wrapper input {
-          background: transparent;
-          border: none;
-          padding: 12px 0;
-          color: var(--text-primary);
-          font-size: 0.9rem;
-          outline: none;
-          width: 100%;
-        }
-        .login-btn {
-          width: 100%;
-          padding: 13px;
-          font-size: 0.95rem;
-          border-radius: 9px;
-          justify-content: center;
-        }
-        .btn-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-          display: inline-block;
-        }
-
-        /* ---- Demo accounts ---- */
-        .demo-section { display: flex; flex-direction: column; gap: 10px; }
-        .demo-label { font-size: 0.75rem; color: var(--text-muted); text-align: center; }
-        .demo-pills { display: flex; gap: 8px; justify-content: center; }
-        .demo-pill {
-          padding: 5px 16px;
+          position: relative; z-index: 1;
+          width: 100%; max-width: 400px;
+          background: rgba(255,255,255,0.035);
+          backdrop-filter: blur(24px);
+          border: 1px solid rgba(255,255,255,0.1);
           border-radius: 20px;
-          border: 1px solid;
-          background: transparent;
-          font-size: 0.78rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: opacity 0.2s;
+          padding: 40px 36px;
+          display: flex; flex-direction: column; gap: 14px;
+          box-shadow: 0 32px 80px rgba(0,0,0,0.4);
+          animation: slideUp 0.4s ease;
         }
-        .demo-pill:hover { opacity: 0.75; }
-
+        .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+        .brand-icon {
+          width: 40px; height: 40px; border-radius: 12px;
+          background: linear-gradient(135deg, #6366F1, #8B5CF6);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.78rem; font-weight: 900; color: #fff;
+          font-family: var(--font-sora, sans-serif);
+        }
+        .brand-name { font-family: var(--font-sora, sans-serif); font-size: 1.05rem; font-weight: 800; color: var(--text-primary); }
+        .brand-tagline { font-size: 0.7rem; color: var(--text-muted); }
+        .login-heading { font-family: var(--font-sora, sans-serif); font-size: 1.5rem; font-weight: 800; color: var(--text-primary); margin: 0; }
+        .login-sub { font-size: 0.85rem; color: var(--text-secondary); margin: -6px 0 4px; }
+        .api-error { display: flex; align-items: center; gap: 7px; background: rgba(244,63,94,0.08); border: 1px solid rgba(244,63,94,0.2); color: #F43F5E; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; }
+        .login-form { display: flex; flex-direction: column; gap: 14px; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+        .field input {
+          background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+          border-radius: 10px; padding: 11px 14px; color: var(--text-primary);
+          font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+          width: 100%;
+        }
+        .field input:focus { border-color: #6366F1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+        .field input.input-error { border-color: #F43F5E; }
+        .field-error { font-size: 0.72rem; color: #F43F5E; }
+        .pwd-wrap { position: relative; }
+        .pwd-wrap input { padding-right: 42px; }
+        .pwd-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; }
+        .forgot-row { display: flex; justify-content: flex-end; margin: -4px 0; }
+        .forgot-link { font-size: 0.78rem; color: #818CF8; transition: color 0.2s; }
+        .forgot-link:hover { color: #6366F1; }
+        .btn-login {
+          background: linear-gradient(135deg, #6366F1, #8B5CF6);
+          color: #fff; border: none; border-radius: 10px;
+          padding: 13px; font-size: 0.92rem; font-weight: 700;
+          cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 4px;
+        }
+        .btn-login:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .btn-login:disabled { opacity: 0.6; cursor: not-allowed; }
+        .spin { animation: spin 0.7s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-      `}} />
+        .login-footer { font-size: 0.72rem; color: var(--text-muted); text-align: center; margin-top: 4px; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   );
 }
