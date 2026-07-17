@@ -4,7 +4,7 @@
  * Handles 401 by clearing session and redirecting to /login.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;

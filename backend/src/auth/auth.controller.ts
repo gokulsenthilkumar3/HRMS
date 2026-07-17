@@ -12,12 +12,12 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 class LoginDto {
-  email: string;
-  password: string;
+  email!: string;
+  password!: string;
 }
 
 class RefreshDto {
-  refresh_token: string;
+  refresh_token!: string;
 }
 
 @Controller('auth')
