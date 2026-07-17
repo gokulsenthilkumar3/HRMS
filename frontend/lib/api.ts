@@ -8,7 +8,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 export const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 const TOKEN_KEY = 'hrms_access_token';
 

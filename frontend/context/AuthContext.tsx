@@ -59,9 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const data = await apiFetch('/auth/login', {
+    const data = await apiFetch('/auth/dev-login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email }),
     });
     const { access_token, user: loggedInUser } = data;
     setAuthToken(access_token);
