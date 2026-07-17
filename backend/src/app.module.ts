@@ -1,57 +1,39 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { PrismaModule } from './prisma/prisma.module';
-import { AssetsModule } from './assets/assets.module';
-import { BlockchainModule } from './blockchain/blockchain.module';
-import { MaintenanceModule } from './maintenance/maintenance.module';
-import { HelpdeskModule } from './helpdesk/helpdesk.module';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { ReportsModule } from './reports/reports.module';
-import { HrModule } from './hr/hr.module';
-import { FacilitiesModule } from './facilities/facilities.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ProcurementModule } from './procurement/procurement.module';
-import { AiModule } from './ai/ai.module';
-import { TelemetryModule } from './telemetry/telemetry.module';
-import { AnalyticsModule } from './analytics/analytics.module';
-import { FieldRbacInterceptor } from './auth/field-rbac.interceptor';
+import { APP_GUARD } from '@nestjs/core';
+import { PrismaModule }   from './prisma/prisma.module';
+import { LoggerModule }   from './common/logger/logger.module';
+import { AuthModule }     from './auth/auth.module';
+import { UsersModule }    from './users/users.module';
+import { PayrollModule }  from './payroll/payroll.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { RecruitmentModule } from './recruitment/recruitment.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { AuditMiddleware } from './common/middleware/audit.middleware';
+import { throttlerConfig } from './common/guards/throttler.config';
 
 @Module({
   imports: [
-    // Load environment variables globally
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
-
-    // Rate limiting: 100 requests per 60 seconds per IP
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-
+    ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot(throttlerConfig),
+    LoggerModule,
     PrismaModule,
-    AssetsModule,
-    BlockchainModule,
-    MaintenanceModule,
-    HelpdeskModule,
     AuthModule,
     UsersModule,
-    ReportsModule,
-    HrModule,
-    FacilitiesModule,
-    ProcurementModule,
-    AnalyticsModule,
-    AiModule,
-    TelemetryModule,
+    PayrollModule,
+    AttendanceModule,
+    RecruitmentModule,
+    DashboardModule,
   ],
-  controllers: [AppController],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: FieldRbacInterceptor,
-    }
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(AuditMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}

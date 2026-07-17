@@ -1,22 +1,14 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Req,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Get } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
-class LoginDto {
+export class LoginDto {
   email!: string;
   password!: string;
 }
 
-class RefreshDto {
+export class RefreshDto {
   refresh_token!: string;
 }
 
@@ -24,51 +16,35 @@ class RefreshDto {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * POST /auth/login
-   * Body: { email, password }
-   * Returns: { access_token, refresh_token, expires_in, user }
-   */
+  /** POST /auth/login — tight rate limit: 10/15min */
+  @Throttle({ auth: { limit: 10, ttl: 15 * 60 * 1000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    if (!dto.email || !dto.password) {
-      throw new UnauthorizedException('Email and password are required');
-    }
-    return this.authService.emailLogin(dto.email, dto.password);
+  login(@Body() dto: LoginDto) {
+    return this.authService.login(dto.email, dto.password);
   }
 
-  /**
-   * POST /auth/refresh
-   * Body: { refresh_token }
-   */
+  /** POST /auth/refresh */
+  @Throttle({ auth: { limit: 10, ttl: 15 * 60 * 1000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshDto) {
-    if (!dto.refresh_token) {
-      throw new UnauthorizedException('refresh_token is required');
-    }
-    return this.authService.refresh(dto.refresh_token);
+  refresh(@Body() dto: RefreshDto) {
+    return this.authService.refreshToken(dto.refresh_token);
   }
 
-  /**
-   * POST /auth/logout
-   * Revokes all refresh tokens for the current user.
-   */
-  @Post('logout')
+  /** POST /auth/logout */
   @UseGuards(JwtAuthGuard)
+  @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(@Req() req: any) {
-    await this.authService.revokeAllTokens(req.user.sub);
+  logout() {
+    // Stateless JWT — client drops token. Future: add to blocklist.
+    return;
   }
 
-  /**
-   * POST /auth/dev-login  (non-production only)
-   * Body: { email }
-   */
-  @Post('dev-login')
-  @HttpCode(HttpStatus.OK)
-  async devLogin(@Body() body: { email: string }) {
-    return this.authService.devLogin(body.email);
+  /** GET /auth/me */
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(@Request() req: any) {
+    return req.user;
   }
 }
