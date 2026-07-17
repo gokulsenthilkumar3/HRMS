@@ -1,132 +1,229 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../context/AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
+import { useNotifications } from '@/hooks/useNotifications';
+import { NotificationCenter } from '@/components/layout/NotificationCenter';
 import {
   LayoutDashboard,
-  Package,
-  ScanQrCode,
-  Wrench,
-  ClipboardList,
-  LogOut,
-  Triangle,
-  GitFork,
   Users,
-  Headset,
-  Building,
-  ShoppingCart,
-  LineChart,
+  UserCheck,
+  CalendarClock,
+  DollarSign,
+  TrendingUp,
+  GraduationCap,
+  Briefcase,
+  ClipboardList,
+  MessageSquare,
+  Settings,
+  LogOut,
   Menu,
   X,
-  Shield,
-  UserSquare,
-  Truck
+  Sun,
+  Moon,
+  Building2,
+  UserPlus,
+  BarChart3,
+  ShieldCheck,
 } from 'lucide-react';
 
 type NavItem = {
   href: string;
   label: string;
-  purpose?: string;
-  icon: JSX.Element;
+  purpose: string;
+  icon: React.ReactNode;
   roles?: string[];
 };
 
 type NavGroup = {
   label: string;
-  roles?: string[];
   items: NavItem[];
 };
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Cyber-Physical Hub',
+    label: 'Overview',
     items: [
-      { href: '/dashboard', label: 'Mission Control', purpose: 'Global asset health', icon: <LayoutDashboard size={18} /> },
-      { href: '/inventory', label: 'Digital Twin Hub', purpose: '3D asset grid', icon: <Package size={18} /> },
-      { href: '/facilities', label: 'Floor Plans', purpose: 'Spatial asset tracking', icon: <Building size={18} /> },
-      { href: '/graph', label: 'Dependency Map', purpose: 'View network topology', icon: <GitFork size={18} /> },
-    ]
+      {
+        href: '/dashboard',
+        label: 'Dashboard',
+        purpose: 'KPIs & analytics',
+        icon: <LayoutDashboard size={17} />,
+      },
+    ],
   },
   {
-    label: 'Operations & Custody',
+    label: 'People',
     items: [
-      { href: '/maintenance', label: 'Predictive Maintenance', purpose: 'IoT telemetry & repair', icon: <Wrench size={18} /> },
-      { href: '/hr', label: 'Employee Custody', purpose: 'Onboarding & ownership', icon: <Users size={18} /> },
-      { href: '/reports', label: 'Audit Ledger', purpose: 'Blockchain history', icon: <ClipboardList size={18} /> },
-      { href: '/scanner', label: 'Quick Scan', purpose: 'Audit via QR', icon: <ScanQrCode size={18} /> },
-      { href: '/fleet', label: 'Fleet Management', purpose: 'Company vehicles GPS', icon: <Truck size={18} /> },
-    ]
+      {
+        href: '/hr',
+        label: 'Employees',
+        purpose: 'Directory & profiles',
+        icon: <Users size={17} />,
+      },
+      {
+        href: '/hr/onboarding',
+        label: 'Onboarding',
+        purpose: 'New hire checklist',
+        icon: <UserPlus size={17} />,
+      },
+      {
+        href: '/hr/org-chart',
+        label: 'Org Chart',
+        purpose: 'Company hierarchy',
+        icon: <Building2 size={17} />,
+      },
+    ],
   },
   {
-    label: 'Access & Security',
+    label: 'Time & Pay',
     items: [
-      { href: '/security', label: 'Security & Access', purpose: 'Digital keys & cameras', icon: <Shield size={18} />, roles: ['ADMIN'] },
-      { href: '/visitor', label: 'Visitor Kiosk', purpose: 'Front desk check-in', icon: <UserSquare size={18} /> },
-    ]
+      {
+        href: '/attendance',
+        label: 'Attendance',
+        purpose: 'Daily log & leave',
+        icon: <CalendarClock size={17} />,
+      },
+      {
+        href: '/payroll',
+        label: 'Payroll',
+        purpose: 'Salary & payslips',
+        icon: <DollarSign size={17} />,
+      },
+    ],
   },
   {
-    label: 'Insights & AI',
-    roles: ['ADMIN', 'MANAGER'],
+    label: 'Talent',
     items: [
-      { href: '/analytics', label: 'Deep Insights', purpose: 'Forecasts & ESG', icon: <LineChart size={18} />, roles: ['ADMIN', 'MANAGER'] },
-      { href: '/procurement', label: 'Auto-Replenishment', purpose: 'Vendor management', icon: <ShoppingCart size={18} />, roles: ['ADMIN', 'MANAGER'] },
-      { href: '/helpdesk', label: 'AI Assistant', purpose: 'Chat & support', icon: <Headset size={18} /> },
-    ]
-  }
+      {
+        href: '/performance',
+        label: 'Performance',
+        purpose: 'Goals & reviews',
+        icon: <TrendingUp size={17} />,
+      },
+      {
+        href: '/training',
+        label: 'Training & L&D',
+        purpose: 'Courses & skills',
+        icon: <GraduationCap size={17} />,
+      },
+      {
+        href: '/recruitment',
+        label: 'Recruitment',
+        purpose: 'Jobs & pipeline',
+        icon: <Briefcase size={17} />,
+      },
+    ],
+  },
+  {
+    label: 'Compliance',
+    items: [
+      {
+        href: '/compliance',
+        label: 'Compliance',
+        purpose: 'Policies & audits',
+        icon: <ShieldCheck size={17} />,
+      },
+      {
+        href: '/reports',
+        label: 'Reports',
+        purpose: 'HR analytics exports',
+        icon: <BarChart3 size={17} />,
+      },
+    ],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      {
+        href: '/helpdesk',
+        label: 'Helpdesk',
+        purpose: 'Tickets & support',
+        icon: <MessageSquare size={17} />,
+      },
+      {
+        href: '/settings',
+        label: 'Settings',
+        purpose: 'Company & roles',
+        icon: <Settings size={17} />,
+        roles: ['superAdmin', 'hrManager'],
+      },
+    ],
+  },
 ];
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const { notifications, markAllRead, dismiss } = useNotifications();
 
   const normalizedPath = '/' + (pathname.replace(/^\//, '').split('/')[0] || '');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!loading && !user && normalizedPath !== '/login' && normalizedPath !== '/') {
       router.replace('/login');
     }
   }, [loading, user, normalizedPath, router]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   if (normalizedPath === '/login' || normalizedPath === '/') return <>{children}</>;
 
   if (loading || !user) {
     return (
       <div className="shell-loader">
-        <div className="spinner" />
-        <style>{`.shell-loader{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg-primary)}.spinner{width:40px;height:40px;border:3px solid var(--border-color);border-top-color:var(--accent-primary);border-radius:50%;animation:spin 0.8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <div className="shell-spinner" />
       </div>
     );
   }
 
-  const initials = (user.fullName || 'U')
+  const initials = (user.fullName || 'HR')
     .split(' ')
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
 
+  const roleLabel: Record<string, string> = {
+    superAdmin: 'Super Admin',
+    hrManager: 'HR Manager',
+    teamLead: 'Team Lead',
+    employee: 'Employee',
+  };
+
   return (
     <>
+      {/* Mobile top bar */}
       <header className="mobile-header">
         <button
           className="mobile-menu-btn"
           onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
         >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <div className="mobile-logo">
-          <Triangle size={20} fill="currentColor" />
-          <span>VaultIQ</span>
+          <span className="logo-icon">HR</span>
+          <span>HRMS</span>
         </div>
-        <div className="avatar-mobile">{initials}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <NotificationCenter
+            notifications={notifications}
+            onMarkAllRead={markAllRead}
+            onDismiss={dismiss}
+          />
+          <div className="avatar-mobile">{initials}</div>
+        </div>
       </header>
 
       <div
@@ -135,73 +232,186 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       />
 
       <div className="layout-wrapper">
+        {/* Sidebar */}
         <nav className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+          {/* Logo */}
           <div className="logo">
-            <Triangle size={22} fill="currentColor" />
-            <span>VaultIQ</span>
+            <span className="logo-icon-lg">HR</span>
+            <div>
+              <div className="logo-name">HRMS</div>
+              <div className="logo-tagline">People Operations</div>
+            </div>
           </div>
 
-          <div className="nav-menu" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {NAV_GROUPS.filter(group => !group.roles || group.roles.includes(user.role)).map((group) => (
+          {/* Nav groups */}
+          <div className="nav-scroll">
+            {NAV_GROUPS.map((group) => (
               <div key={group.label} className="nav-group">
                 <div className="nav-group-title">{group.label}</div>
                 <ul>
-                  {group.items.filter(item => !item.roles || item.roles.includes(user.role)).map((item) => (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={`nav-item ${
-                          normalizedPath === item.href ? 'active' : ''
-                        }`}
-                      >
-                        <span className="nav-icon">{item.icon}</span>
-                        <div className="nav-text">
-                          <span className="nav-label">{item.label}</span>
-                          {item.purpose && <span className="nav-purpose">{item.purpose}</span>}
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
+                  {group.items
+                    .filter(
+                      (item) =>
+                        !item.roles || item.roles.includes(user.role)
+                    )
+                    .map((item) => {
+                      const isActive =
+                        pathname === item.href ||
+                        (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                      return (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            className={`nav-item ${isActive ? 'active' : ''}`}
+                          >
+                            <span className="nav-icon">{item.icon}</span>
+                            <div className="nav-text">
+                              <span className="nav-label">{item.label}</span>
+                              <span className="nav-purpose">{item.purpose}</span>
+                            </div>
+                          </Link>
+                        </li>
+                      );
+                    })}
                 </ul>
               </div>
             ))}
           </div>
 
-          <div className="user-profile">
-            <div className="user-profile-main">
+          {/* Bottom: theme toggle + user */}
+          <div className="sidebar-footer">
+            <button
+              className="theme-toggle"
+              onClick={() => setDarkMode((d) => !d)}
+              aria-label="Toggle theme"
+            >
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+              {darkMode ? 'Light mode' : 'Dark mode'}
+            </button>
+
+            <div className="user-card">
               <div className="avatar">{initials}</div>
-              <div>
+              <div className="user-info">
                 <div className="user-name">{user.fullName}</div>
-                <div className="user-role">{user.role}</div>
+                <div className="user-role">{roleLabel[user.role] ?? user.role}</div>
               </div>
+              <NotificationCenter
+                notifications={notifications}
+                onMarkAllRead={markAllRead}
+                onDismiss={dismiss}
+              />
             </div>
-            <button className="btn-logout" onClick={() => logout()} aria-label="Sign out">
+
+            <button className="btn-logout" onClick={() => logout()}>
               <LogOut size={14} /> Sign out
             </button>
           </div>
         </nav>
 
-        <main className="main-content">
-          {children}
-        </main>
+        {/* Main */}
+        <main className="main-content">{children}</main>
       </div>
 
       <style>{`
-        .nav-menu { padding: 0; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; overflow-x: hidden; }
-        .nav-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
-        .nav-group-title { font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; padding-left: 14px; letter-spacing: 0.05em; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; text-decoration: none; color: var(--text-secondary); font-weight: 500; font-size: 0.9rem; transition: all 0.2s ease; }
-        .nav-item:hover { background: rgba(88,166,255,0.08); color: var(--text-primary); }
-        .nav-item.active { background: rgba(88,166,255,0.12); color: var(--accent-primary); font-weight: 600; }
-        .nav-icon { display: flex; align-items: center; flex-shrink: 0; margin-top: 2px; align-self: flex-start; }
-        .nav-text { display: flex; flex-direction: column; gap: 2px; }
-        .nav-label { font-size: 0.9rem; font-weight: 500; }
-        .nav-purpose { font-size: 0.7rem; color: var(--text-muted); line-height: 1.1; font-weight: 400; }
-        .nav-item:hover .nav-purpose { color: rgba(255,255,255,0.6); }
-        .nav-item.active .nav-purpose { color: rgba(88,166,255,0.7); }
-        .btn-logout { background: rgba(255,77,77,0.08); color: #ff7b78; border: 1px solid rgba(255,77,77,0.2); padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
-        .btn-logout:hover { background: rgba(255,77,77,0.15); }
-        .user-profile-main { display: flex; align-items: center; gap: 10px; }
+        .shell-loader {
+          display: flex; align-items: center; justify-content: center;
+          min-height: 100vh; background: var(--bg-primary);
+        }
+        .shell-spinner {
+          width: 38px; height: 38px;
+          border: 3px solid var(--border-color);
+          border-top-color: var(--accent-primary);
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Logo */
+        .logo-icon {
+          width: 28px; height: 28px; border-radius: 8px;
+          background: linear-gradient(135deg, #6366F1, #8B5CF6);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.7rem; font-weight: 800; color: #fff; flex-shrink: 0;
+        }
+        .logo-icon-lg {
+          width: 34px; height: 34px; border-radius: 10px;
+          background: linear-gradient(135deg, #6366F1, #8B5CF6);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.75rem; font-weight: 800; color: #fff; flex-shrink: 0;
+          font-family: var(--font-sora, sans-serif);
+        }
+        .logo-name {
+          font-family: var(--font-sora, sans-serif);
+          font-size: 1rem; font-weight: 800;
+          color: var(--text-primary); line-height: 1.2;
+        }
+        .logo-tagline {
+          font-size: 0.65rem; color: var(--text-muted);
+          text-transform: uppercase; letter-spacing: 0.05em;
+        }
+
+        /* Nav scroll */
+        .nav-scroll {
+          flex: 1; overflow-y: auto; overflow-x: hidden;
+          display: flex; flex-direction: column; gap: 18px;
+          padding: 4px 0;
+        }
+        .nav-scroll::-webkit-scrollbar { width: 4px; }
+        .nav-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+        .nav-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1px; }
+        .nav-group-title {
+          font-size: 0.68rem; text-transform: uppercase; font-weight: 700;
+          color: var(--text-muted); margin-bottom: 6px; padding-left: 12px; letter-spacing: 0.08em;
+        }
+        .nav-item {
+          display: flex; align-items: center; gap: 11px;
+          padding: 9px 12px; border-radius: 8px;
+          text-decoration: none; color: var(--text-secondary);
+          font-size: 0.875rem; transition: all 0.15s ease;
+        }
+        .nav-item:hover { background: rgba(99,102,241,0.08); color: var(--text-primary); }
+        .nav-item.active {
+          background: rgba(99,102,241,0.14);
+          color: #818CF8;
+          font-weight: 600;
+        }
+        .nav-icon { display: flex; align-items: center; flex-shrink: 0; }
+        .nav-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .nav-label { font-size: 0.875rem; font-weight: 500; line-height: 1.2; }
+        .nav-purpose { font-size: 0.68rem; color: var(--text-muted); line-height: 1; }
+        .nav-item:hover .nav-purpose { color: rgba(255,255,255,0.45); }
+        .nav-item.active .nav-purpose { color: rgba(129,140,248,0.65); }
+
+        /* Sidebar footer */
+        .sidebar-footer {
+          margin-top: auto; padding-top: 14px;
+          border-top: 1px solid var(--border-color);
+          display: flex; flex-direction: column; gap: 8px;
+        }
+        .theme-toggle {
+          display: flex; align-items: center; gap: 7px;
+          background: rgba(255,255,255,0.04); border: 1px solid var(--border-color);
+          color: var(--text-secondary); border-radius: 7px;
+          padding: 7px 10px; font-size: 0.78rem; cursor: pointer;
+          transition: all 0.2s; width: 100%;
+        }
+        .theme-toggle:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+        .user-card {
+          display: flex; align-items: center; gap: 9px;
+          padding: 8px 0;
+        }
+        .user-info { flex: 1; min-width: 0; }
+        .user-name { font-size: 0.83rem; font-weight: 600; color: var(--text-primary); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-role { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .btn-logout {
+          background: rgba(244,63,94,0.07); color: #FDA4AF;
+          border: 1px solid rgba(244,63,94,0.18);
+          padding: 8px 12px; border-radius: 7px; font-size: 0.8rem;
+          font-weight: 600; cursor: pointer; transition: background 0.2s;
+          width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-logout:hover { background: rgba(244,63,94,0.14); }
       `}</style>
     </>
   );
