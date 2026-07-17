@@ -1,80 +1,63 @@
-/**
- * HRMS API client
- * Automatically attaches Authorization header from localStorage.
- * Handles 401 by clearing session and redirecting to /login.
- */
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('hrms_access_token');
-}
+const axiosInstance: AxiosInstance = axios.create({
+  baseURL: API_URL,
+  timeout: 15_000,
+  headers: { 'Content-Type': 'application/json' },
+});
 
-async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const refresh = localStorage.getItem('hrms_refresh_token');
-    if (!refresh) return null;
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refresh }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    localStorage.setItem('hrms_access_token', data.access_token);
-    localStorage.setItem('hrms_refresh_token', data.refresh_token);
-    return data.access_token;
-  } catch {
-    return null;
+// ── Request interceptor: attach JWT ──────────────────────────────────────
+
+axiosInstance.interceptors.request.use(config => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('hrms_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
   }
-}
+  return config;
+});
 
-function clearSession() {
-  localStorage.removeItem('hrms_access_token');
-  localStorage.removeItem('hrms_refresh_token');
-  localStorage.removeItem('hrms_user');
-  window.location.href = '/login';
-}
+// ── Response interceptor: handle 401/403 ──────────────────────────────
 
-export async function apiFetch<T = unknown>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  let token = getToken();
+axiosInstance.interceptors.response.use(
+  res => res,
+  async err => {
+    const status = err.response?.status;
+    if (status === 401) {
+      // Try refresh
+      const refresh = typeof window !== 'undefined' ? localStorage.getItem('hrms_refresh') : null;
+      if (refresh) {
+        try {
+          const { data } = await axios.post(`${API_URL}/auth/refresh`, { refresh_token: refresh });
+          localStorage.setItem('hrms_token',   data.access_token);
+          localStorage.setItem('hrms_refresh',  data.refresh_token);
+          err.config.headers.Authorization = `Bearer ${data.access_token}`;
+          return axiosInstance.request(err.config);
+        } catch {
+          localStorage.removeItem('hrms_token');
+          localStorage.removeItem('hrms_refresh');
+          window.location.href = '/auth/login';
+        }
+      } else {
+        window.location.href = '/auth/login';
+      }
+    }
+    if (status === 403) {
+      console.warn('[API] 403 Forbidden — insufficient permissions');
+    }
+    return Promise.reject(err.response?.data ?? err);
+  },
+);
 
-  const makeRequest = (t: string | null) =>
-    fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(t ? { Authorization: `Bearer ${t}` } : {}),
-        ...(options.headers ?? {}),
-      },
-    });
-
-  let res = await makeRequest(token);
-
-  // Try to refresh on 401
-  if (res.status === 401) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) { clearSession(); throw new Error('Session expired'); }
-    res = await makeRequest(newToken);
-    if (res.status === 401) { clearSession(); throw new Error('Session expired'); }
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as any;
-    throw new Error(err.message || `API error ${res.status}`);
-  }
-
-  return res.json() as Promise<T>;
-}
+// ── Typed helpers ──────────────────────────────────────────────────────────────
 
 export const api = {
-  get:    <T>(path: string)                  => apiFetch<T>(path),
-  post:   <T>(path: string, body: unknown)   => apiFetch<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
-  put:    <T>(path: string, body: unknown)   => apiFetch<T>(path, { method: 'PUT',    body: JSON.stringify(body) }),
-  patch:  <T>(path: string, body: unknown)   => apiFetch<T>(path, { method: 'PATCH',  body: JSON.stringify(body) }),
-  delete: <T>(path: string)                  => apiFetch<T>(path, { method: 'DELETE' }),
+  get:    <T>(url: string, params?: Record<string,any>)                   => axiosInstance.get<T>(url,{params}).then((r:AxiosResponse<T>)=>r.data),
+  post:   <T>(url: string, data: unknown)                                 => axiosInstance.post<T>(url,data).then((r:AxiosResponse<T>)=>r.data),
+  put:    <T>(url: string, data: unknown)                                 => axiosInstance.put<T>(url,data).then((r:AxiosResponse<T>)=>r.data),
+  patch:  <T>(url: string, data: unknown)                                 => axiosInstance.patch<T>(url,data).then((r:AxiosResponse<T>)=>r.data),
+  delete: <T>(url: string)                                                => axiosInstance.delete<T>(url).then((r:AxiosResponse<T>)=>r.data),
 };
+
+export default axiosInstance;

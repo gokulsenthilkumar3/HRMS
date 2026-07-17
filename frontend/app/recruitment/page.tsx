@@ -1,163 +1,121 @@
 'use client';
 import React, { useState } from 'react';
-import { Plus, Users, ChevronRight, Mail, Phone, Briefcase, X } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { Users, Briefcase, TrendingUp, ChevronRight, GripVertical } from 'lucide-react';
 
-type Stage = 'screening' | 'interview' | 'offer' | 'joined';
-
-interface Applicant {
-  id: string;
-  name: string;
-  role: string;
-  email: string;
-  phone: string;
-  appliedDate: string;
-  stage: Stage;
-  rating: number; // 1-5
-  source: string;
-}
-
-const STAGE_META: Record<Stage, { label: string; color: string; bg: string }> = {
-  screening:  { label: 'Screening',  color: '#6366F1', bg: 'rgba(99,102,241,0.08)' },
-  interview:  { label: 'Interview',  color: '#F59E0B', bg: 'rgba(245,158,11,0.08)' },
-  offer:      { label: 'Offer',      color: '#10B981', bg: 'rgba(16,185,129,0.08)' },
-  joined:     { label: 'Hired',      color: '#8B5CF6', bg: 'rgba(139,92,246,0.08)' },
-};
-
-const INITIAL_APPLICANTS: Applicant[] = [
-  { id: 'A1', name: 'Ananya Patel',    role: 'Frontend Engineer',   email: 'ananya@mail.com', phone: '+91 9876540001', appliedDate: '2026-07-01', stage: 'screening', rating: 4, source: 'LinkedIn' },
-  { id: 'A2', name: 'Rajan Verma',     role: 'Backend Engineer',    email: 'rajan@mail.com',  phone: '+91 9876540002', appliedDate: '2026-07-02', stage: 'screening', rating: 3, source: 'Naukri' },
-  { id: 'A3', name: 'Sneha Iyer',      role: 'HR Executive',        email: 'sneha@mail.com',  phone: '+91 9876540003', appliedDate: '2026-06-28', stage: 'interview', rating: 5, source: 'Referral' },
-  { id: 'A4', name: 'Manoj Kumar',     role: 'DevOps Engineer',     email: 'manoj@mail.com',  phone: '+91 9876540004', appliedDate: '2026-06-25', stage: 'interview', rating: 4, source: 'LinkedIn' },
-  { id: 'A5', name: 'Pooja Reddy',     role: 'Product Manager',     email: 'pooja@mail.com',  phone: '+91 9876540005', appliedDate: '2026-06-20', stage: 'offer',     rating: 5, source: 'Direct' },
-  { id: 'A6', name: 'Kiran Shankar',   role: 'Data Analyst',        email: 'kiran@mail.com',  phone: '+91 9876540006', appliedDate: '2026-06-15', stage: 'joined',    rating: 4, source: 'Campus' },
-];
-
-const STAGES: Stage[] = ['screening', 'interview', 'offer', 'joined'];
-
-function ApplicantCard({
-  applicant,
-  onAdvance,
-}: {
-  applicant: Applicant;
-  onAdvance: (id: string) => void;
-}) {
-  const currentIdx = STAGES.indexOf(applicant.stage);
-  const canAdvance = currentIdx < STAGES.length - 1;
-  const initials = applicant.name.split(' ').map((n) => n[0]).slice(0, 2).join('');
-
-  return (
-    <div className="app-card card-premium">
-      <div className="app-header">
-        <div className="app-avatar">{initials}</div>
-        <div className="app-info">
-          <div className="app-name">{applicant.name}</div>
-          <div className="app-role">{applicant.role}</div>
-        </div>
-        <div className="app-stars">
-          {'★'.repeat(applicant.rating)}{'☆'.repeat(5 - applicant.rating)}
-        </div>
-      </div>
-      <div className="app-meta">
-        <span><Mail size={11} /> {applicant.email}</span>
-        <span><Briefcase size={11} /> {applicant.source}</span>
-      </div>
-      <div className="app-footer">
-        <span className="app-date">Applied {applicant.appliedDate}</span>
-        {canAdvance && (
-          <button className="btn-advance" onClick={() => onAdvance(applicant.id)}>
-            Move to {STAGE_META[STAGES[currentIdx + 1]].label} <ChevronRight size={12} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
+const STAGES = ['APPLIED','SCREENING','INTERVIEW','OFFER','HIRED','REJECTED'] as const;
+const STAGE_COLORS: Record<string,string> = { APPLIED:'#6366F1', SCREENING:'#F59E0B', INTERVIEW:'#06B6D4', OFFER:'#8B5CF6', HIRED:'#10B981', REJECTED:'#F43F5E' };
 
 export default function RecruitmentPage() {
-  const [applicants, setApplicants] = useState<Applicant[]>(INITIAL_APPLICANTS);
+  const qc = useQueryClient();
+  const [view, setView] = useState<'kanban'|'analytics'>('kanban');
+  const { data:kanban } = useQuery({ queryKey:['kanban'], queryFn:()=>api.get<any>('/recruitment/kanban'), staleTime:30_000 });
+  const { data:analytics } = useQuery({ queryKey:['rec-analytics'], queryFn:()=>api.get<any>('/recruitment/analytics'), staleTime:60_000, enabled: view==='analytics' });
 
-  const advance = (id: string) => {
-    setApplicants((prev) =>
-      prev.map((a) => {
-        if (a.id !== id) return a;
-        const idx = STAGES.indexOf(a.stage);
-        return { ...a, stage: STAGES[Math.min(idx + 1, STAGES.length - 1)] };
-      })
-    );
+  const moveStage = useMutation({
+    mutationFn:({id,stage}:{id:string;stage:string})=>api.patch(`/recruitment/applications/${id}/stage`,{stage}),
+    onSuccess:()=>qc.invalidateQueries({queryKey:['kanban']}),
+  });
+
+  const handleDrop = (e: React.DragEvent, stage: string) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('appId');
+    if (id) moveStage.mutate({ id, stage });
   };
 
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Recruitment</h1>
-          <p className="page-subtitle">{applicants.length} applicants · {applicants.filter((a) => a.stage === 'joined').length} hired this cycle</p>
+    <div className="rec-page">
+      <div className="rec-header">
+        <h1><Briefcase size={22}/> Recruitment Pipeline</h1>
+        <div className="view-toggle">
+          <button className={view==='kanban'?'active':''} onClick={()=>setView('kanban')}>Kanban</button>
+          <button className={view==='analytics'?'active':''} onClick={()=>setView('analytics')}><TrendingUp size={14}/> Analytics</button>
         </div>
-        <button className="btn btn-primary"><Plus size={15} /> Post Job</button>
       </div>
 
-      {/* Kanban board */}
-      <div className="kanban-board">
-        {STAGES.map((stage) => {
-          const cards = applicants.filter((a) => a.stage === stage);
-          const meta = STAGE_META[stage];
-          return (
-            <div key={stage} className="kanban-col">
-              <div
-                className="kanban-header"
-                style={{ borderTop: `3px solid ${meta.color}` }}
-              >
-                <span className="kanban-label" style={{ color: meta.color }}>{meta.label}</span>
-                <span className="kanban-count" style={{ background: meta.bg, color: meta.color }}>
-                  {cards.length}
-                </span>
+      {view==='kanban' && (
+        <div className="kanban-board">
+          {STAGES.map(stage => (
+            <div key={stage} className="kanban-col"
+              onDragOver={e=>e.preventDefault()}
+              onDrop={e=>handleDrop(e, stage)}
+            >
+              <div className="kanban-col-header" style={{borderTopColor:STAGE_COLORS[stage]}}>
+                <span className="stage-dot" style={{background:STAGE_COLORS[stage]}}/>  {stage}
+                <span className="stage-count">{kanban?.[stage]?.length??0}</span>
               </div>
               <div className="kanban-cards">
-                {cards.map((a) => (
-                  <ApplicantCard key={a.id} applicant={a} onAdvance={advance} />
+                {(kanban?.[stage]??[]).map((app:any)=>(
+                  <div key={app.id} className="kanban-card"
+                    draggable
+                    onDragStart={e=>e.dataTransfer.setData('appId',app.id)}
+                  >
+                    <GripVertical size={12} style={{color:'#4B5278',flexShrink:0}}/>
+                    <div className="kc-body">
+                      <div className="kc-name">{app.candidate?.name}</div>
+                      <div className="kc-role">{app.job?.title}</div>
+                      <div className="kc-meta">{app.source} · {new Date(app.appliedAt).toLocaleDateString('en-IN')}</div>
+                    </div>
+                  </div>
                 ))}
-                {cards.length === 0 && (
-                  <div className="kanban-empty">No applicants in this stage</div>
-                )}
               </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
-      <style>{`
-        .page-container { padding: 28px 32px; display: flex; flex-direction: column; gap: 22px; max-width: 1400px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-        .page-title { font-size: 1.6rem; font-weight: 800; font-family: var(--font-sora, sans-serif); color: var(--text-primary); margin: 0; }
-        .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0; }
-        .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
-        .btn-primary { background: #6366F1; color: #fff; } .btn-primary:hover { background: #4F46E5; }
+      {view==='analytics' && analytics && (
+        <div className="rec-analytics">
+          <div className="kpi-grid">
+            {[['Total Applications',analytics.total,'#6366F1'],['Hired',analytics.hired,'#10B981'],['Avg Time to Hire',`${analytics.avgTimeToHireDays} days`,'#F59E0B'],['Offer Acceptance',`${analytics.offerAcceptanceRate}%`,'#8B5CF6']].map(([l,v,c])=>(
+              <div key={String(l)} className="kpi-card">
+                <div className="kpi-val" style={{color:String(c)}}>{v}</div>
+                <div className="kpi-lbl">{l}</div>
+              </div>
+            ))}
+          </div>
+          <div className="source-breakdown">
+            <h3>Source of Hire</h3>
+            {Object.entries(analytics.sourceBreakdown??{}).map(([src,count])=>(
+              <div key={src} className="src-row"><span>{src}</span><span className="src-count">{String(count)}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
 
-        .kanban-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: start; }
-        @media (max-width: 1100px) { .kanban-board { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 600px) { .kanban-board { grid-template-columns: 1fr; } }
-
-        .kanban-col { display: flex; flex-direction: column; gap: 0; }
-        .kanban-header { background: rgba(255,255,255,0.03); border-radius: 10px 10px 0 0; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-bottom: none; }
-        .kanban-label { font-size: 0.85rem; font-weight: 700; }
-        .kanban-count { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 0.72rem; font-weight: 800; }
-        .kanban-cards { display: flex; flex-direction: column; gap: 0; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 10px 10px; padding: 8px; min-height: 100px; }
-        .kanban-empty { color: var(--text-muted); font-size: 0.78rem; text-align: center; padding: 24px 0; }
-
-        .app-card { padding: 14px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
-        .app-header { display: flex; align-items: flex-start; gap: 9px; }
-        .app-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #6366F1, #8B5CF6); display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 800; color: #fff; flex-shrink: 0; }
-        .app-info { flex: 1; min-width: 0; }
-        .app-name { font-size: 0.83rem; font-weight: 700; color: var(--text-primary); }
-        .app-role { font-size: 0.72rem; color: var(--text-secondary); }
-        .app-stars { font-size: 0.7rem; color: #F59E0B; flex-shrink: 0; }
-        .app-meta { display: flex; flex-direction: column; gap: 3px; }
-        .app-meta span { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-muted); }
-        .app-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
-        .app-date { font-size: 0.7rem; color: var(--text-muted); }
-        .btn-advance { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; background: rgba(99,102,241,0.1); color: #818CF8; border: 1px solid rgba(99,102,241,0.2); cursor: pointer; transition: background 0.2s; }
-        .btn-advance:hover { background: rgba(99,102,241,0.2); }
-      `}</style>
+      <style>{recStyles}</style>
     </div>
   );
 }
+
+const recStyles=`
+.rec-page{padding:28px 32px;display:flex;flex-direction:column;gap:22px;height:calc(100vh - 64px);overflow:hidden;}
+.rec-header{display:flex;align-items:center;justify-content:space-between;}
+.rec-header h1{display:flex;align-items:center;gap:10px;font-family:var(--font-sora,sans-serif);font-size:1.5rem;font-weight:800;color:#F0F2FF;margin:0;}
+.view-toggle{display:flex;gap:4px;background:rgba(255,255,255,0.04);border-radius:10px;padding:4px;}
+.view-toggle button{background:none;border:none;color:#9BA3C0;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:0.82rem;font-weight:600;display:flex;align-items:center;gap:5px;}
+.view-toggle button.active{background:rgba(255,255,255,0.07);color:#F0F2FF;}
+.kanban-board{display:grid;grid-template-columns:repeat(6,minmax(180px,1fr));gap:12px;overflow-x:auto;flex:1;align-items:start;padding-bottom:16px;}
+.kanban-col{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:12px;display:flex;flex-direction:column;gap:8px;min-height:300px;overflow:hidden;}
+.kanban-col-header{display:flex;align-items:center;gap:6px;padding:12px 14px 8px;font-size:0.72rem;font-weight:800;color:#9BA3C0;text-transform:uppercase;letter-spacing:0.07em;border-top:3px solid transparent;}
+.stage-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stage-count{margin-left:auto;background:rgba(255,255,255,0.08);color:#F0F2FF;font-size:0.65rem;width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;}
+.kanban-cards{display:flex;flex-direction:column;gap:6px;padding:0 8px 8px;flex:1;}
+.kanban-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:10px 10px;cursor:grab;display:flex;align-items:flex-start;gap:6px;transition:all 0.15s;}
+.kanban-card:hover{background:rgba(255,255,255,0.06);transform:translateY(-1px);}
+.kanban-card:active{cursor:grabbing;}
+.kc-body{flex:1;display:flex;flex-direction:column;gap:3px;}
+.kc-name{font-size:0.8rem;font-weight:700;color:#F0F2FF;}
+.kc-role{font-size:0.7rem;color:#9BA3C0;}
+.kc-meta{font-size:0.62rem;color:#4B5278;}
+.rec-analytics{display:flex;flex-direction:column;gap:22px;overflow-y:auto;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;}
+.kpi-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:18px;}
+.kpi-val{font-size:1.5rem;font-weight:800;font-family:var(--font-sora,sans-serif);margin-bottom:6px;}
+.kpi-lbl{font-size:0.72rem;color:#9BA3C0;font-weight:600;}
+.source-breakdown{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;}
+.source-breakdown h3{font-size:0.82rem;font-weight:700;color:#9BA3C0;text-transform:uppercase;letter-spacing:0.05em;margin:0;}
+.src-row{display:flex;justify-content:space-between;font-size:0.82rem;color:#9BA3C0;}
+.src-count{background:rgba(99,102,241,0.15);color:#818CF8;padding:1px 10px;border-radius:20px;font-weight:700;}
+`;
