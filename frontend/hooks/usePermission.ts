@@ -1,9 +1,7 @@
 /**
  * usePermission — Centralized RBAC hook.
- * Replaces scattered role checks in individual components.
- * Resolves Issue #2: RBAC Middleware
- *
- * Role hierarchy: superAdmin > hrManager > teamLead > employee
+ * Bridges AuthContext roles (ADMIN/MANAGER/USER) with granular module/action permissions.
+ * Fixes Issue #12 & #14.
  *
  * Usage:
  *   const { can, role } = usePermission();
@@ -11,10 +9,13 @@
  */
 
 import { useContext } from 'react';
-import { AuthContext } from '@/context/AuthContext';
+import { AuthContext, mapRoleToPermissionRole } from '@/context/AuthContext';
 
 export type Role = 'superAdmin' | 'hrManager' | 'teamLead' | 'employee' | 'guest';
-export type Module = 'employees' | 'payroll' | 'attendance' | 'performance' | 'recruitment' | 'compliance' | 'reports' | 'settings';
+export type Module =
+  | 'employees' | 'payroll' | 'attendance' | 'performance'
+  | 'recruitment' | 'compliance' | 'reports' | 'settings'
+  | 'training' | 'helpdesk' | 'analytics' | 'orgchart';
 export type Action = 'view' | 'create' | 'edit' | 'delete' | 'process' | 'approve' | 'export';
 
 type PermissionMatrix = {
@@ -33,6 +34,10 @@ const PERMISSIONS: PermissionMatrix = {
     compliance:  ['view', 'create', 'edit', 'delete', 'export'],
     reports:     ['view', 'export'],
     settings:    ['view', 'create', 'edit', 'delete'],
+    training:    ['view', 'create', 'edit', 'delete', 'export'],
+    helpdesk:    ['view', 'create', 'edit', 'delete'],
+    analytics:   ['view', 'export'],
+    orgchart:    ['view', 'edit'],
   },
   hrManager: {
     employees:   ['view', 'create', 'edit', 'export'],
@@ -43,6 +48,10 @@ const PERMISSIONS: PermissionMatrix = {
     compliance:  ['view', 'export'],
     reports:     ['view', 'export'],
     settings:    ['view', 'edit'],
+    training:    ['view', 'create', 'edit', 'export'],
+    helpdesk:    ['view', 'create', 'edit'],
+    analytics:   ['view', 'export'],
+    orgchart:    ['view'],
   },
   teamLead: {
     employees:   ['view', 'export'],
@@ -53,6 +62,10 @@ const PERMISSIONS: PermissionMatrix = {
     compliance:  ['view'],
     reports:     ['view'],
     settings:    [],
+    training:    ['view'],
+    helpdesk:    ['view', 'create'],
+    analytics:   ['view'],
+    orgchart:    ['view'],
   },
   employee: {
     employees:   ['view'],
@@ -63,26 +76,32 @@ const PERMISSIONS: PermissionMatrix = {
     compliance:  ['view'],
     reports:     [],
     settings:    [],
+    training:    ['view'],
+    helpdesk:    ['view', 'create'],
+    analytics:   [],
+    orgchart:    ['view'],
   },
   guest: {},
 };
 
 export function usePermission() {
   const auth = useContext(AuthContext);
-  const role: Role = (auth?.user?.role as Role) || 'guest';
+  // Bridge: map ADMIN/MANAGER/USER -> superAdmin/hrManager/employee
+  const rawRole = auth?.user?.role;
+  const role: Role = rawRole
+    ? (mapRoleToPermissionRole(rawRole) as Role)
+    : 'guest';
 
   const can = (module: Module, action: Action): boolean => {
-    const allowed = PERMISSIONS[role]?.[module] || [];
+    const allowed = PERMISSIONS[role]?.[module] ?? [];
     return allowed.includes(action);
   };
 
-  const canAny = (module: Module, actions: Action[]): boolean => {
-    return actions.some((action) => can(module, action));
-  };
+  const canAny = (module: Module, actions: Action[]): boolean =>
+    actions.some((action) => can(module, action));
 
-  const canAll = (module: Module, actions: Action[]): boolean => {
-    return actions.every((action) => can(module, action));
-  };
+  const canAll = (module: Module, actions: Action[]): boolean =>
+    actions.every((action) => can(module, action));
 
   return { can, canAny, canAll, role };
 }
