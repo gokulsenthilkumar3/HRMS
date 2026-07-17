@@ -1,25 +1,34 @@
 'use client';
+/**
+ * AuthContext — authentication state & actions for HRMS.
+ * Fixes Issue #2: Proper role types aligned with usePermission hook.
+ * Token key unified to 'hrms_access_token'.
+ */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, setAuthToken, clearAuthToken } from '../lib/api';
 
-interface User {
+export type HRMSRole = 'superAdmin' | 'hrManager' | 'teamLead' | 'employee';
+
+export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
-  role: 'ADMIN' | 'MANAGER' | 'USER';
+  role: HRMSRole;
+  department?: string;
+  avatarUrl?: string;
 }
 
-interface AuthContextType {
-  user: User | null;
+export interface AuthContextType {
+  user: AuthUser | null;
   loading: boolean;
-  login: (email: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
-const STORAGE_KEY = 'vaultiq_user';
+const STORAGE_KEY = 'hrms_user';
 
-const AuthContext = createContext<AuthContextType>({
+export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   login: async () => {},
@@ -27,7 +36,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -36,34 +45,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         setUser(JSON.parse(stored));
-        // Retrieve token from cookie to set on apiFetch if we want it in memory too
-        const token = document.cookie.split('; ').find(row => row.startsWith('vaultiq_token='))?.split('=')[1];
+        const token = document.cookie
+          .split('; ')
+          .find((r) => r.startsWith('hrms_token='))
+          ?.split('=')[1];
         if (token) setAuthToken(token);
       }
-    } catch {}
-    setLoading(false);
+    } catch {
+      // ignore parse errors
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const login = async (email: string) => {
-    try {
-      const data = await apiFetch('/auth/dev-login', {
-        method: 'POST',
-        body: JSON.stringify({ email })
-      });
-      const { access_token, user: loggedInUser } = data;
-      setAuthToken(access_token);
-      document.cookie = `vaultiq_token=${access_token}; path=/; max-age=86400`;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
-      setUser(loggedInUser);
-      router.push('/dashboard');
-    } catch (err: any) {
-      alert(err.message || 'Login failed');
-    }
+  const login = async (email: string, password: string) => {
+    const data = await apiFetch('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    const { access_token, user: loggedInUser } = data;
+    setAuthToken(access_token);
+    document.cookie = `hrms_token=${access_token}; path=/; max-age=86400; SameSite=Strict`;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser));
+    setUser(loggedInUser);
+    router.push('/dashboard');
   };
 
   const logout = () => {
     clearAuthToken();
-    document.cookie = 'vaultiq_token=; path=/; max-age=0';
+    document.cookie = 'hrms_token=; path=/; max-age=0';
     localStorage.removeItem(STORAGE_KEY);
     setUser(null);
     router.push('/login');
