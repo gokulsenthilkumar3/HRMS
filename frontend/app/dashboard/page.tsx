@@ -1,297 +1,122 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import {
-  Users, TrendingDown, Briefcase, CalendarOff,
-  ArrowUpRight, ArrowDownRight, RefreshCw,
-} from 'lucide-react';
+import React, { Suspense } from 'react';
+import dynamic from 'next/dynamic';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { Users, TrendingDown, Briefcase, UserPlus, Clock, Activity } from 'lucide-react';
 
-// ─ Types
-interface KPICard {
-  label: string;
-  value: number;
-  unit?: string;
-  change: number; // % change vs last period
-  icon: React.ReactNode;
-  color: string;
-  loading?: boolean;
-}
+const BarChartWidget   = dynamic(() => import('../../components/charts/BarChartWidget'),   { ssr: false, loading: () => <ChartSkeleton /> });
+const LineChartWidget  = dynamic(() => import('../../components/charts/LineChartWidget'),  { ssr: false, loading: () => <ChartSkeleton /> });
+const PieChartWidget   = dynamic(() => import('../../components/charts/PieChartWidget'),   { ssr: false, loading: () => <ChartSkeleton /> });
+const DashboardGlobe3D = dynamic(() => import('../../components/3d/DashboardGlobe3D'),     { ssr: false, loading: () => <div className="globe-placeholder" /> });
 
-interface DeptRow {
-  name: string;
-  count: number;
-  percent: number;
-  color: string;
-}
+function ChartSkeleton() { return <div className="chart-skeleton" aria-label="Loading chart" />; }
 
-interface ActivityItem {
-  id: string;
-  action: string;
-  name: string;
-  time: string;
-  type: 'join' | 'leave' | 'payroll' | 'review' | 'exit';
-}
-
-// ─ Skeleton component
-function Skeleton({ h = 16, w = '100%', radius = 6 }: { h?: number; w?: number | string; radius?: number }) {
-  return (
-    <div
-      className="skeleton-box"
-      style={{ height: h, width: w, borderRadius: radius }}
-    />
-  );
-}
-
-// ─ Count-up hook
-function useCountUp(target: number, duration = 1200, loading = false) {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    if (loading) { setValue(0); return; }
+function useCountUp(target: number, duration = 1200) {
+  const [val, setVal] = React.useState(0);
+  React.useEffect(() => {
+    if (!target) return;
     let start = 0;
     const step = target / (duration / 16);
-    const timer = setInterval(() => {
+    const t = setInterval(() => {
       start += step;
-      if (start >= target) { setValue(target); clearInterval(timer); }
-      else setValue(Math.floor(start));
+      if (start >= target) { setVal(target); clearInterval(t); }
+      else setVal(Math.floor(start));
     }, 16);
-    return () => clearInterval(timer);
-  }, [target, duration, loading]);
-  return value;
+    return () => clearInterval(t);
+  }, [target, duration]);
+  return val;
 }
 
-function KPIWidget({ card }: { card: KPICard }) {
-  const displayVal = useCountUp(card.value, 1000, card.loading);
-  const isPositive = card.change >= 0;
+function KpiCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: number; sub?: string; color: string }) {
+  const display = useCountUp(value);
   return (
-    <div className="kpi-card card-premium">
-      <div className="kpi-header">
-        <span className="kpi-icon" style={{ background: card.color + '18', color: card.color }}>
-          {card.icon}
-        </span>
-        <span className={`kpi-change ${isPositive ? 'up' : 'down'}`}>
-          {isPositive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-          {Math.abs(card.change)}%
-        </span>
+    <div className="kpi-card">
+      <div className="kpi-icon" style={{ background: color + '18', color }}><Icon size={20} /></div>
+      <div className="kpi-body">
+        <div className="kpi-value">{display}{sub}</div>
+        <div className="kpi-label">{label}</div>
       </div>
-      {card.loading ? (
-        <>
-          <Skeleton h={32} w={80} />
-          <Skeleton h={12} w={120} />
-        </>
-      ) : (
-        <>
-          <div className="kpi-value">
-            {displayVal}{card.unit}
-          </div>
-          <div className="kpi-label">{card.label}</div>
-        </>
-      )}
     </div>
   );
 }
 
-const DEPT_DATA: DeptRow[] = [
-  { name: 'Engineering', count: 42, percent: 32, color: '#6366F1' },
-  { name: 'Sales', count: 28, percent: 21, color: '#10B981' },
-  { name: 'Operations', count: 24, percent: 18, color: '#F59E0B' },
-  { name: 'HR & Admin', count: 18, percent: 14, color: '#8B5CF6' },
-  { name: 'Finance', count: 12, percent: 9, color: '#06B6D4' },
-  { name: 'Marketing', count: 8, percent: 6, color: '#F43F5E' },
-];
-
-const ACTIVITY: ActivityItem[] = [
-  { id: '1', action: 'joined', name: 'Priya Sharma', time: '2h ago', type: 'join' },
-  { id: '2', action: 'payroll processed for', name: 'March 2026', time: '5h ago', type: 'payroll' },
-  { id: '3', action: 'on leave', name: 'Arjun Mehta', time: '1d ago', type: 'leave' },
-  { id: '4', action: 'performance review for', name: 'Q1 2026', time: '2d ago', type: 'review' },
-  { id: '5', action: 'offboarded', name: 'Kavitha R.', time: '3d ago', type: 'exit' },
-];
-
-const ACTIVITY_COLORS: Record<string, string> = {
-  join: '#10B981', leave: '#F59E0B', payroll: '#6366F1',
-  review: '#8B5CF6', exit: '#F43F5E',
-};
+function KpiSkeleton() {
+  return <div className="kpi-card skeleton"><div className="sk-icon" /><div className="sk-body"><div className="sk-val" /><div className="sk-lbl" /></div></div>;
+}
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 1400);
-    return () => clearTimeout(t);
-  }, []);
-
-  const kpis: KPICard[] = [
-    {
-      label: 'Total Headcount',
-      value: 132,
-      change: 4.2,
-      icon: <Users size={20} />,
-      color: '#6366F1',
-      loading,
-    },
-    {
-      label: 'Attrition Rate',
-      value: 6,
-      unit: '%',
-      change: -1.3,
-      icon: <TrendingDown size={20} />,
-      color: '#F43F5E',
-      loading,
-    },
-    {
-      label: 'Open Positions',
-      value: 8,
-      change: 2,
-      icon: <Briefcase size={20} />,
-      color: '#10B981',
-      loading,
-    },
-    {
-      label: 'On Leave Today',
-      value: 11,
-      change: -2,
-      icon: <CalendarOff size={20} />,
-      color: '#F59E0B',
-      loading,
-    },
-  ];
+  const { data: stats, isLoading: sLoad } = useQuery({ queryKey: ['dashboard-stats'],  queryFn: () => api.get<any>('/dashboard/stats'),  staleTime: 60_000 });
+  const { data: trends, isLoading: tLoad } = useQuery({ queryKey: ['dashboard-trends'], queryFn: () => api.get<any>('/dashboard/trends'), staleTime: 60_000 });
 
   return (
-    <div className="page-container">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">People operations overview — real-time HR metrics</p>
+    <div className="dash">
+      {/* 3D Globe hero */}
+      <div className="globe-wrap"><Suspense fallback={<div className="globe-placeholder" />}><DashboardGlobe3D /></Suspense></div>
+
+      <div className="dash-content">
+        <div className="dash-header">
+          <h1 className="dash-title">HR Dashboard</h1>
+          <p className="dash-sub">Real-time people analytics for your organisation</p>
         </div>
-        <button className="btn btn-secondary" onClick={() => { setLoading(true); setTimeout(() => setLoading(false), 1200); }}>
-          <RefreshCw size={15} /> Refresh
-        </button>
-      </div>
 
-      {/* KPI Row */}
-      <div className="kpi-grid">
-        {kpis.map((k) => <KPIWidget key={k.label} card={k} />)}
-      </div>
-
-      {/* Mid row: dept table + activity */}
-      <div className="dashboard-mid">
-        {/* Department breakdown */}
-        <div className="card-premium dept-card">
-          <h3 className="widget-title">Headcount by Department</h3>
-          {loading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ marginBottom: 14 }}>
-                <Skeleton h={12} w={`${60 + i * 5}%`} />
-                <div style={{ marginTop: 6 }}><Skeleton h={8} w="100%" radius={4} /></div>
-              </div>
-            ))
-          ) : (
-            <table className="dept-table">
-              <thead>
-                <tr>
-                  <th>Department</th>
-                  <th>Headcount</th>
-                  <th style={{ width: '40%' }}>Distribution</th>
-                </tr>
-              </thead>
-              <tbody>
-                {DEPT_DATA.map((d) => (
-                  <tr key={d.name}>
-                    <td><span className="dept-dot" style={{ background: d.color }} />{d.name}</td>
-                    <td className="font-mono">{d.count}</td>
-                    <td>
-                      <div className="bar-wrap">
-                        <div
-                          className="bar-fill"
-                          style={{ width: `${d.percent}%`, background: d.color }}
-                        />
-                        <span className="bar-pct">{d.percent}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* KPI Cards */}
+        <div className="kpi-grid">
+          {sLoad ? Array(6).fill(0).map((_, i) => <KpiSkeleton key={i} />) : (
+            <>
+              <KpiCard icon={Users}        label="Total Headcount"      value={stats?.totalHeadcount ?? 0}      color="#6366F1" />
+              <KpiCard icon={Activity}     label="Active Employees"     value={stats?.activeEmployees ?? 0}     color="#10B981" />
+              <KpiCard icon={TrendingDown} label="Attrition Rate"       value={stats?.attritionRate ?? 0}       color="#F43F5E" sub="%" />
+              <KpiCard icon={Briefcase}    label="Open Positions"       value={stats?.openPositions ?? 0}       color="#F59E0B" />
+              <KpiCard icon={UserPlus}     label="New Hires This Month" value={stats?.newHiresThisMonth ?? 0}  color="#8B5CF6" />
+              <KpiCard icon={Clock}        label="Pending Leaves"       value={stats?.pendingLeaveRequests ?? 0} color="#06B6D4" />
+            </>
           )}
         </div>
 
-        {/* Activity feed */}
-        <div className="card-premium activity-card">
-          <h3 className="widget-title">Recent Activity</h3>
-          {loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="activity-skeleton">
-                <Skeleton h={32} w={32} radius={50} />
-                <div style={{ flex: 1 }}>
-                  <Skeleton h={12} w="80%" />
-                  <div style={{ marginTop: 5 }}><Skeleton h={10} w="50%" /></div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <ul className="activity-list">
-              {ACTIVITY.map((a) => (
-                <li key={a.id} className="activity-item">
-                  <div
-                    className="activity-dot"
-                    style={{ background: ACTIVITY_COLORS[a.type] }}
-                  />
-                  <div className="activity-body">
-                    <span className="activity-text">
-                      <strong>{a.name}</strong> {a.action}
-                    </span>
-                    <span className="activity-time">{a.time}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* Charts Row 1 */}
+        <div className="charts-row">
+          <div className="chart-card wide">
+            <h3 className="chart-title">Headcount Trend (12 Months)</h3>
+            {tLoad ? <ChartSkeleton /> : <LineChartWidget data={trends ?? []} dataKey="headcount" xKey="month" color="#6366F1" />}
+          </div>
+          <div className="chart-card">
+            <h3 className="chart-title">Gender Distribution</h3>
+            {sLoad ? <ChartSkeleton /> : <PieChartWidget data={stats?.genderDistribution ?? []} />}
+          </div>
+        </div>
+
+        {/* Charts Row 2 */}
+        <div className="chart-card">
+          <h3 className="chart-title">Headcount by Department</h3>
+          {sLoad ? <ChartSkeleton /> : <BarChartWidget data={stats?.departmentBreakdown ?? []} xKey="dept" dataKey="count" color="#8B5CF6" />}
         </div>
       </div>
 
       <style>{`
-        .page-container { padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; max-width: 1400px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-        .page-title { font-size: 1.6rem; font-weight: 800; font-family: var(--font-sora, sans-serif); color: var(--text-primary); margin: 0; }
-        .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0; }
-        .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
-        .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); }
-        .btn-secondary:hover { background: rgba(255,255,255,0.09); color: var(--text-primary); }
-
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
-        .kpi-card { padding: 22px; display: flex; flex-direction: column; gap: 10px; }
-        .kpi-header { display: flex; justify-content: space-between; align-items: center; }
-        .kpi-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
-        .kpi-change { display: flex; align-items: center; gap: 3px; font-size: 0.78rem; font-weight: 700; border-radius: 20px; padding: 3px 8px; }
-        .kpi-change.up { background: rgba(16,185,129,0.1); color: #10B981; }
-        .kpi-change.down { background: rgba(244,63,94,0.1); color: #F43F5E; }
-        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--text-primary); font-family: var(--font-sora, sans-serif); line-height: 1; }
-        .kpi-label { font-size: 0.8rem; color: var(--text-secondary); }
-
-        .dashboard-mid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
-        @media (max-width: 900px) { .dashboard-mid { grid-template-columns: 1fr; } }
-        .dept-card { padding: 22px; }
-        .activity-card { padding: 22px; }
-        .widget-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 16px; }
-
-        .dept-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-        .dept-table th { color: var(--text-muted); font-weight: 600; text-align: left; padding: 0 0 10px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-color); }
-        .dept-table td { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-secondary); vertical-align: middle; }
-        .dept-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
-        .bar-wrap { display: flex; align-items: center; gap: 8px; }
-        .bar-fill { height: 6px; border-radius: 3px; transition: width 0.8s ease; }
-        .bar-pct { font-size: 0.72rem; color: var(--text-muted); min-width: 32px; }
-        .font-mono { font-family: var(--font-mono, monospace); font-size: 0.88rem; color: var(--text-primary); font-weight: 600; }
-
-        .activity-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
-        .activity-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-        .activity-item:last-child { border-bottom: none; }
-        .activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
-        .activity-body { display: flex; flex-direction: column; gap: 2px; }
-        .activity-text { font-size: 0.83rem; color: var(--text-secondary); }
-        .activity-text strong { color: var(--text-primary); }
-        .activity-time { font-size: 0.72rem; color: var(--text-muted); }
-        .activity-skeleton { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
+        .dash { position: relative; min-height: 100vh; background: var(--bg-primary,#0A0B0F); }
+        .globe-wrap { position: fixed; top: 0; right: 0; width: 420px; height: 420px; pointer-events: none; z-index: 0; opacity: 0.18; }
+        .globe-placeholder { width: 100%; height: 100%; }
+        .dash-content { position: relative; z-index: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px; max-width: 1280px; }
+        .dash-header h1 { font-family: var(--font-sora,sans-serif); font-size: 1.8rem; font-weight: 800; color: #F0F2FF; margin: 0; }
+        .dash-header p  { font-size: 0.85rem; color: #9BA3C0; margin: 4px 0 0; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 16px; }
+        .kpi-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 20px; display: flex; align-items: center; gap: 14px; transition: transform 0.2s, box-shadow 0.2s; }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+        .kpi-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .kpi-value { font-size: 1.6rem; font-weight: 800; font-family: var(--font-sora,sans-serif); color: #F0F2FF; line-height: 1; }
+        .kpi-label { font-size: 0.72rem; color: #9BA3C0; margin-top: 4px; font-weight: 500; }
+        .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        @media(max-width:768px){ .charts-row { grid-template-columns: 1fr; } .dash-content { padding: 16px; } }
+        .chart-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 22px; }
+        .chart-title { font-size: 0.88rem; font-weight: 700; color: #9BA3C0; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px; }
+        .chart-skeleton { height: 220px; border-radius: 10px; background: linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .kpi-card.skeleton { animation: shimmer 1.4s infinite; background: linear-gradient(90deg,rgba(255,255,255,0.03) 25%,rgba(255,255,255,0.06) 50%,rgba(255,255,255,0.03) 75%); background-size: 200% 100%; }
+        .sk-icon { width:44px; height:44px; border-radius:12px; background:rgba(255,255,255,0.06); flex-shrink:0; }
+        .sk-body { flex:1; display:flex; flex-direction:column; gap:8px; }
+        .sk-val  { height:24px; width:60%; border-radius:6px; background:rgba(255,255,255,0.06); }
+        .sk-lbl  { height:12px; width:80%; border-radius:4px; background:rgba(255,255,255,0.04); }
       `}</style>
     </div>
   );

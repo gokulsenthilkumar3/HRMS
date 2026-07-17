@@ -1,42 +1,18 @@
 import type { Metadata } from 'next';
-import { Inter, Sora, JetBrains_Mono } from 'next/font/google';
-import '../styles/globals.css';
-import { AuthProvider } from '../context/AuthContext';
-import Shell from '../components/Shell';
-import FloatingAssistant from '../components/FloatingAssistant';
+import { Sora, Inter } from 'next/font/google';
+import Providers from './providers';
+import './globals.css';
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-const sora = Sora({
-  subsets: ['latin'],
-  variable: '--font-sora',
-  display: 'swap',
-});
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-});
+const sora  = Sora({ subsets: ['latin'], variable: '--font-sora', display: 'swap' });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
-export const metadata: Metadata = {
-  title: 'HRMS | Human Resource Management System',
-  description: 'Enterprise-grade HR platform — Employees, Payroll, Attendance, Recruitment & more',
-  keywords: ['HRMS', 'HR software', 'payroll', 'attendance', 'employee management'],
-};
+export const metadata: Metadata = { title: 'HRMS — People Operations Platform', description: 'Modern HR management system' };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable}`}>
-        <AuthProvider>
-          <Shell>{children}</Shell>
-          <FloatingAssistant />
-        </AuthProvider>
+    <html lang="en" className={`${sora.variable} ${inter.variable}`}>
+      <body className="font-inter">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
