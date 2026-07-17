@@ -1,49 +1,74 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-import { IsEmail, IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  Req,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { RequestWithUser } from './request-with-user.interface';
 
-class DevLoginDto {
-  @ApiProperty({ example: 'user@vaultiq.dev' })
-  @IsEmail()
-  email!: string;
+class LoginDto {
+  email: string;
+  password: string;
 }
 
-class RefreshTokenDto {
-  @ApiProperty({ description: 'Opaque refresh token obtained from login or previous refresh call' })
-  @IsString()
-  @IsNotEmpty()
-  refresh_token!: string;
+class RefreshDto {
+  refresh_token: string;
 }
 
-@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {}
 
-  @Post('dev-login')
+  /**
+   * POST /auth/login
+   * Body: { email, password }
+   * Returns: { access_token, refresh_token, expires_in, user }
+   */
+  @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Dev only] Login with an email — disabled in production' })
-  async devLogin(@Body() dto: DevLoginDto) {
-    return this.authService.devLogin(dto.email);
+  async login(@Body() dto: LoginDto) {
+    if (!dto.email || !dto.password) {
+      throw new UnauthorizedException('Email and password are required');
+    }
+    return this.authService.emailLogin(dto.email, dto.password);
   }
 
+  /**
+   * POST /auth/refresh
+   * Body: { refresh_token }
+   */
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Exchange a refresh token for a new access + refresh token pair' })
-  async refresh(@Body() dto: RefreshTokenDto) {
+  async refresh(@Body() dto: RefreshDto) {
+    if (!dto.refresh_token) {
+      throw new UnauthorizedException('refresh_token is required');
+    }
     return this.authService.refresh(dto.refresh_token);
   }
 
+  /**
+   * POST /auth/logout
+   * Revokes all refresh tokens for the current user.
+   */
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Revoke all refresh tokens for the authenticated user (logout)' })
-  async logout(@Req() req: RequestWithUser) {
-    await this.authService.revokeAllTokens(req.user.userId);
+  async logout(@Req() req: any) {
+    await this.authService.revokeAllTokens(req.user.sub);
+  }
+
+  /**
+   * POST /auth/dev-login  (non-production only)
+   * Body: { email }
+   */
+  @Post('dev-login')
+  @HttpCode(HttpStatus.OK)
+  async devLogin(@Body() body: { email: string }) {
+    return this.authService.devLogin(body.email);
   }
 }

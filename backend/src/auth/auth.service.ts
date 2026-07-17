@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcrypt';
 
 export interface TokenPair {
   access_token: string;
@@ -15,42 +16,107 @@ export interface AuthResponse extends TokenPair {
     email: string;
     fullName: string;
     role: string;
+    department?: string | null;
+    employeeId?: string | null;
+    avatarUrl?: string | null;
   };
 }
 
 @Injectable()
 export class AuthService {
-  /** Access token TTL in seconds (15 minutes) */
-  private readonly ACCESS_TOKEN_TTL = 15 * 60;
-  /** Refresh token TTL in seconds (7 days) */
-  private readonly REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60;
+  private readonly ACCESS_TOKEN_TTL = 15 * 60;       // 15 min
+  private readonly REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days
+  private readonly BCRYPT_ROUNDS = 12;
 
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(azureId: string) {
-    return this.prisma.user.findUnique({ where: { azureId } });
-  }
+  // ─── helpers ──────────────────────────────────────────────────────────────
 
   private buildPayload(user: { id: string; email: string; role: string }) {
     return { email: user.email, sub: user.id, role: user.role };
   }
 
-  /** SHA-256 hash of a raw token string for safe DB storage. */
   private hashToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
   }
 
-  /** Generates a cryptographically random opaque refresh token. */
   private generateRawRefreshToken(): string {
     return randomBytes(64).toString('hex');
   }
 
-  async login(user: { id: string; email: string; fullName: string; role: string }): Promise<AuthResponse> {
+  async hashPassword(plain: string): Promise<string> {
+    return bcrypt.hash(plain, this.BCRYPT_ROUNDS);
+  }
+
+  async verifyPassword(plain: string, hash: string): Promise<boolean> {
+    return bcrypt.compare(plain, hash);
+  }
+
+  // ─── Email + Password login ───────────────────────────────────────────────
+
+  async emailLogin(email: string, password: string): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is deactivated. Contact HR.');
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException(
+        'This account uses Single Sign-On. Please login via SSO.',
+      );
+    }
+
+    const valid = await this.verifyPassword(password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    return this.issueTokens(user);
+  }
+
+  // ─── Azure SSO login ──────────────────────────────────────────────────────
+
+  async validateUser(azureId: string) {
+    return this.prisma.user.findUnique({ where: { azureId } });
+  }
+
+  async login(user: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+    department?: string | null;
+    employeeId?: string | null;
+    avatarUrl?: string | null;
+  }): Promise<AuthResponse> {
+    return this.issueTokens(user);
+  }
+
+  // ─── Token management ────────────────────────────────────────────────────
+
+  private async issueTokens(user: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+    department?: string | null;
+    employeeId?: string | null;
+    avatarUrl?: string | null;
+  }): Promise<AuthResponse> {
     const payload = this.buildPayload(user);
-    const access_token = this.jwtService.sign(payload, { expiresIn: this.ACCESS_TOKEN_TTL });
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: this.ACCESS_TOKEN_TTL,
+    });
 
     const rawRefresh = this.generateRawRefreshToken();
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_TTL * 1000);
@@ -67,15 +133,18 @@ export class AuthService {
       access_token,
       refresh_token: rawRefresh,
       expires_in: this.ACCESS_TOKEN_TTL,
-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        department: user.department,
+        employeeId: user.employeeId,
+        avatarUrl: user.avatarUrl,
+      },
     };
   }
 
-  /**
-   * Validates a refresh token and issues a new access + refresh token pair.
-   * Implements strict token rotation: the old token is revoked in the DB
-   * before the new one is issued, preventing replay attacks.
-   */
   async refresh(rawRefreshToken: string): Promise<TokenPair> {
     const tokenHash = this.hashToken(rawRefreshToken);
 
@@ -85,20 +154,19 @@ export class AuthService {
     });
 
     if (!stored || stored.revoked || stored.expiresAt < new Date()) {
-      // If the token was already revoked, this may indicate a replay attack.
-      // Revoke ALL tokens for this user as a precaution.
       if (stored) {
         await this.prisma.refreshToken.updateMany({
           where: { userId: stored.userId },
           data: { revoked: true },
         });
       }
-      throw new UnauthorizedException('Refresh token is invalid, expired, or already used');
+      throw new UnauthorizedException(
+        'Refresh token is invalid, expired, or already used',
+      );
     }
 
     const user = stored.user;
 
-    // Revoke old token (rotation)
     await this.prisma.refreshToken.update({
       where: { tokenHash },
       data: { revoked: true },
@@ -126,7 +194,6 @@ export class AuthService {
     };
   }
 
-  /** Revoke all refresh tokens for a user (logout). */
   async revokeAllTokens(userId: string): Promise<void> {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
@@ -134,46 +201,45 @@ export class AuthService {
     });
   }
 
-  /**
-   * Dev-only login: creates or returns a user by email.
-   * Role is always USER unless overridden by an existing DB record.
-   * NEVER allows role elevation by email pattern in production.
-   */
+  // ─── Dev-only fallback ────────────────────────────────────────────────────
+
   async devLogin(email: string): Promise<AuthResponse> {
     if (process.env.NODE_ENV === 'production') {
       throw new UnauthorizedException('Dev login is disabled in production');
     }
-    let user;
     try {
-      user = await this.prisma.user.findUnique({ where: { email } });
+      let user = await this.prisma.user.findUnique({ where: { email } });
       if (!user) {
+        const hash = await this.hashPassword('password123');
         user = await this.prisma.user.create({
           data: {
             email,
+            passwordHash: hash,
             fullName: email
               .split('@')[0]
               .replace(/[._-]/g, ' ')
               .replace(/\b\w/g, (c) => c.toUpperCase()),
             azureId: `dev-${Date.now()}-${randomBytes(4).toString('hex')}`,
-            role: 'ADMIN', // Dev mode defaults to ADMIN for testing
+            role: 'ADMIN',
           },
         });
       }
-      return await this.login(user);
-    } catch (error) {
-      console.warn('Database unavailable during devLogin. Returning mock ADMIN token.');
-      user = {
+      return await this.issueTokens(user);
+    } catch {
+      const user = {
         id: 'mock-admin-id',
         email,
         fullName: 'Dev Admin (Offline)',
-        role: 'ADMIN'
+        role: 'ADMIN',
       };
-      const access_token = this.jwtService.sign(this.buildPayload(user), { expiresIn: this.ACCESS_TOKEN_TTL });
+      const access_token = this.jwtService.sign(this.buildPayload(user), {
+        expiresIn: this.ACCESS_TOKEN_TTL,
+      });
       return {
         access_token,
         refresh_token: 'mock-refresh-token',
         expires_in: this.ACCESS_TOKEN_TTL,
-        user
+        user,
       };
     }
   }

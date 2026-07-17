@@ -19,6 +19,20 @@ enum UserRole {
   USER
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
 enum AssetStatus {
   AVAILABLE
   ASSIGNED
@@ -59,19 +73,35 @@ enum TicketStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                String            @id @default(uuid())
-  email             String            @unique
+  id                String         @id @default(uuid())
+  email             String         @unique
+  passwordHash      String?        // bcrypt hash — null for SSO-only users
   fullName          String
-  role              UserRole          @default(USER)
-  azureId           String            @unique
+  role              UserRole       @default(USER)
+  azureId           String?        @unique // nullable: local-auth users have no azureId
   department        String?
-  employeeId        String?           @unique
+  designation       String?        // job title / designation
+  employeeId        String?        @unique // human-readable EMP-XXXX
+  employeeCode      String?        @unique // system-generated code
+  phone             String?
+  gender            Gender?        @default(PREFER_NOT_TO_SAY)
+  employmentType    EmploymentType @default(FULL_TIME)
   hireDate          DateTime?
-  performanceRating Int? // e.g., 1 to 5
+  probationEndDate  DateTime?
+  performanceRating Int?           // 1-5
   dateOfBirth       DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
+  address           String?
+  city              String?
+  state             String?
+  country           String?        @default("India")
+  avatarUrl         String?
+  isActive          Boolean        @default(true)
+  managerId         String?        // self-referencing for org hierarchy
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  manager           User?          @relation("Manages", fields: [managerId], references: [id])
+  reportees         User[]         @relation("Manages")
   assignments       AssetAssignment[]
   auditLogs         AuditLog[]
   tickets           HelpdeskTicket[]
@@ -82,15 +112,19 @@ model User {
   roomBookings      RoomBooking[]
   deskBookings      DeskBooking[]
   purchaseRequests  PurchaseRequest[]
-  assignedTasks     WorkflowTask[]    @relation("AssignedTo")
-  targetedTasks     WorkflowTask[]    @relation("TargetUser")
+  assignedTasks     WorkflowTask[]  @relation("AssignedTo")
+  targetedTasks     WorkflowTask[]  @relation("TargetUser")
   conductedAudits   ComplianceAudit[]
   refreshTokens     RefreshToken[]
+
+  @@index([email])
+  @@index([department])
+  @@index([managerId])
 }
 
 model Asset {
   id            String      @id @default(uuid())
-  tagId         String      @unique // QR/Barcode content
+  tagId         String      @unique
   serialNumber  String      @unique
   modelName     String
   typeId        String
@@ -115,7 +149,7 @@ model AssetAssignment {
   userId         String
   assignedAt     DateTime  @default(now())
   returnedAt     DateTime?
-  signatureBlob  String? // Base64 or URL
+  signatureBlob  String?
   conditionNotes String?
 
   asset Asset @relation(fields: [assetId], references: [id])
@@ -152,9 +186,6 @@ model Location {
   desks        Desk[]
 }
 
-// Note (Phase 6): For high volume installations, this table should be partitioned
-// by month or year on PostgreSQL (e.g., PARTITION BY RANGE (timestamp)).
-// Older partitions can be moved to cold storage without breaking the blockchain integrity.
 model AuditLog {
   id                String   @id @default(uuid())
   action            String
@@ -182,8 +213,8 @@ model HelpdeskTicket {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  user  User   @relation(fields: [userId], references: [id])
-  asset Asset? @relation(fields: [assetId], references: [id])
+  user     User            @relation(fields: [userId], references: [id])
+  asset    Asset?          @relation(fields: [assetId], references: [id])
   comments TicketComment[]
 }
 
@@ -191,7 +222,7 @@ model CompanyUpdate {
   id      String   @id @default(uuid())
   title   String
   content String
-  type    String // 'announcement', 'update', 'news'
+  type    String
   author  String
   date    DateTime @default(now())
 }
@@ -199,11 +230,12 @@ model CompanyUpdate {
 model LeaveRequest {
   id        String   @id @default(uuid())
   userId    String
-  type      String // 'annual', 'sick', 'outdoor', 'ot'
+  type      String
   startDate DateTime
   endDate   DateTime
   days      Int
-  status    String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  reason    String?  // reason for leave
+  status    String   @default("PENDING")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -211,12 +243,17 @@ model LeaveRequest {
 }
 
 model Payslip {
-  id     String   @id @default(uuid())
-  userId String
-  period String
-  amount String
-  status String   @default("PAID")
-  date   DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String
+  period      String
+  basicSalary Float    @default(0)
+  hra         Float    @default(0)
+  allowances  Float    @default(0)
+  deductions  Float    @default(0)
+  taxAmount   Float    @default(0)
+  netAmount   Float    @default(0)
+  status      String   @default("PAID")
+  date        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 }
@@ -224,20 +261,22 @@ model Payslip {
 model Quote {
   id      String @id @default(uuid())
   content String
+  author  String @default("Unknown")
 }
 
 model AttendanceLog {
   id       String    @id @default(uuid())
   userId   String
-  clockIn  DateTime  @default(now())
+  date     DateTime  @default(now())
+  clockIn  DateTime?
   clockOut DateTime?
+  status   String    @default("PRESENT") // PRESENT, ABSENT, HALF_DAY, LEAVE, HOLIDAY, WFH
+  notes    String?
 
   user User @relation(fields: [userId], references: [id])
-}
 
-// ==========================================
-// EXPANSION MODULES (Helpdesk, Facilities, Procurement, Workflows, Compliance)
-// ==========================================
+  @@index([userId, date])
+}
 
 model TicketComment {
   id        String   @id @default(uuid())
@@ -285,7 +324,7 @@ model Desk {
 }
 
 model DeskBooking {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   deskId    String
   userId    String
   date      DateTime
@@ -313,7 +352,7 @@ model PurchaseRequest {
   title         String
   description   String
   expectedCost  Float
-  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED, ORDERED
+  status        String   @default("PENDING")
   createdAt     DateTime @default(now())
 
   requestedBy User    @relation(fields: [requestedById], references: [id])
@@ -321,38 +360,108 @@ model PurchaseRequest {
 }
 
 model WorkflowTask {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   title        String
-  type         String   // ONBOARD, OFFBOARD, AUDIT
+  type         String
   targetUserId String?
   assignedToId String
-  status       String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  status       String    @default("PENDING")
   dueDate      DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   targetUser User? @relation("TargetUser", fields: [targetUserId], references: [id])
   assignedTo User  @relation("AssignedTo", fields: [assignedToId], references: [id])
 }
 
 model ComplianceAudit {
-  id           String   @id @default(uuid())
-  type         String   // SOC2, ISO27001, INTERNAL
-  targetId     String?  // Can be an Asset ID or Location ID
+  id            String   @id @default(uuid())
+  type          String
+  targetId      String?
   conductedById String
-  findings     String?
-  status       String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
-  date         DateTime
+  findings      String?
+  status        String   @default("SCHEDULED")
+  date          DateTime
 
   conductedBy User @relation(fields: [conductedById], references: [id])
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  userId     String
-  tokenHash  String   @unique
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  revoked    Boolean  @default(false)
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Training & LMS
+model TrainingCourse {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  category    String
+  durationHrs Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  enrollments CourseEnrollment[]
+}
+
+model CourseEnrollment {
+  id          String    @id @default(uuid())
+  courseId    String
+  userId      String
+  status      String    @default("ENROLLED") // ENROLLED, IN_PROGRESS, COMPLETED
+  progress    Int       @default(0) // 0-100
+  completedAt DateTime?
+  enrolledAt  DateTime  @default(now())
+
+  course TrainingCourse @relation(fields: [courseId], references: [id])
+}
+
+// Performance Goals
+model PerformanceGoal {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  targetDate  DateTime
+  progress    Int      @default(0)
+  status      String   @default("IN_PROGRESS") // IN_PROGRESS, ACHIEVED, MISSED
+  cycle       String   // e.g. "Q3 FY2026"
+  createdAt   DateTime @default(now())
+}
+
+// Recruitment Pipeline
+model JobPosting {
+  id          String       @id @default(uuid())
+  title       String
+  department  String
+  location    String
+  type        String       @default("FULL_TIME")
+  description String?
+  isActive    Boolean      @default(true)
+  postedAt    DateTime     @default(now())
+
+  applicants  Applicant[]
+}
+
+model Applicant {
+  id          String   @id @default(uuid())
+  jobId       String
+  name        String
+  email       String
+  phone       String?
+  resumeUrl   String?
+  source      String   @default("Direct")
+  stage       String   @default("SCREENING") // SCREENING, INTERVIEW, OFFER, JOINED, REJECTED
+  rating      Int?     // 1-5
+  notes       String?
+  appliedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job JobPosting @relation(fields: [jobId], references: [id])
 }
