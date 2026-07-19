@@ -64,14 +64,14 @@ export const employeeSchema = z.object({
     .optional()
     .or(z.literal('')),
   department: z.enum(
-    ['engineering', 'hr', 'finance', 'marketing', 'sales', 'operations', 'legal', 'design'],
-    { errorMap: () => ({ message: 'Select a valid department' }) }
+    ['engineering', 'hr', 'finance', 'marketing', 'sales', 'operations', 'legal', 'design'] as const,
+    { message: 'Select a valid department' }
   ),
   designation: z.string().min(2, 'Designation is required'),
   employmentType: z.enum(['fullTime', 'partTime', 'contract', 'intern']),
   dateOfJoining: z.string().refine((val) => new Date(val) <= today, 'Joining date cannot be in the future'),
   salary: z
-    .number({ invalid_type_error: 'Salary must be a number' })
+    .number({ message: 'Salary must be a number' })
     .positive('Salary must be a positive number')
     .multipleOf(0.01, 'Max 2 decimal places'),
 });
@@ -96,8 +96,8 @@ export type BankDetailsFormData = z.infer<typeof bankDetailsSchema>;
 // ─── Attendance / Leave ───────────────────────────────────────────────────────
 export const leaveRequestSchema = z
   .object({
-    leaveType: z.enum(['casual', 'sick', 'earned', 'maternity', 'paternity', 'lop'], {
-      errorMap: () => ({ message: 'Select a valid leave type' }),
+    leaveType: z.enum(['casual', 'sick', 'earned', 'maternity', 'paternity', 'lop'] as const, {
+      message: 'Select a valid leave type',
     }),
     startDate: z.string().min(1, 'Start date is required'),
     endDate: z.string().min(1, 'End date is required'),

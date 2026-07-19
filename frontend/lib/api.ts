@@ -33,18 +33,25 @@ axiosInstance.interceptors.response.use(
           localStorage.setItem('hrms_access_token',   data.access_token);
           localStorage.setItem('hrms_refresh_token',  data.refresh_token);
           document.cookie = `hrms_access_token=${data.access_token}; path=/; max-age=86400; SameSite=Lax`;
+          document.cookie = `hrms_token=${data.access_token}; path=/; max-age=86400; SameSite=Lax`;
           err.config.headers.Authorization = `Bearer ${data.access_token}`;
           return axiosInstance.request(err.config);
         } catch {
           localStorage.removeItem('hrms_access_token');
           localStorage.removeItem('hrms_refresh_token');
+          localStorage.removeItem('hrms_user');
           document.cookie = 'hrms_access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          document.cookie = 'hrms_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          document.cookie = 'hrms_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
           window.location.href = '/login';
         }
       } else {
         localStorage.removeItem('hrms_access_token');
         localStorage.removeItem('hrms_refresh_token');
+        localStorage.removeItem('hrms_user');
         document.cookie = 'hrms_access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'hrms_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'hrms_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         window.location.href = '/login';
       }
     }
@@ -64,5 +71,31 @@ export const api = {
   patch:  <T>(url: string, data: unknown)                                 => axiosInstance.patch<T>(url,data).then((r:AxiosResponse<T>)=>r.data),
   delete: <T>(url: string)                                                => axiosInstance.delete<T>(url).then((r:AxiosResponse<T>)=>r.data),
 };
+
+export async function apiFetch<T = any>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  const headers = options.headers ? (options.headers as Record<string, string>) : {};
+  let data = undefined;
+
+  if (options.body) {
+    try {
+      data = JSON.parse(options.body as string);
+    } catch {
+      data = options.body;
+    }
+  }
+
+  const response = await axiosInstance({
+    url: path,
+    method,
+    headers,
+    data,
+  });
+
+  return response.data as T;
+}
 
 export default axiosInstance;
