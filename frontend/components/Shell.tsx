@@ -26,6 +26,7 @@ import {
   UserPlus,
   BarChart3,
   ShieldCheck,
+  Package,
 } from 'lucide-react';
 
 type NavItem = {
@@ -137,6 +138,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Workspace',
     items: [
       {
+        href: '/assets',
+        label: 'Asset Management',
+        purpose: 'Inventory & assignments',
+        icon: <Package size={17} />,
+      },
+      {
         href: '/helpdesk',
         label: 'Helpdesk',
         purpose: 'Tickets & support',
@@ -158,7 +165,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('hrms-theme');
+      return saved ? saved === 'dark' : true;
+    }
+    return true;
+  });
   const { notifications, markAllRead, dismiss } = useNotifications();
 
   const normalizedPath = '/' + (pathname.replace(/^\//, '').split('/')[0] || '');
@@ -175,6 +188,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('hrms-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
   if (normalizedPath === '/login' || normalizedPath === '/') return <>{children}</>;

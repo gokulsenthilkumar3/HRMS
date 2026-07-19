@@ -6,11 +6,11 @@ export const throttlerConfig: ThrottlerModuleOptions = [
   {
     name: 'general',
     ttl:   15 * 60 * 1000, // 15 minutes in ms
-    limit: 100,
+    limit: 1000,
   },
   {
     name: 'auth',
     ttl:   15 * 60 * 1000,
-    limit: 10,
+    limit: 100,
   },
 ];

@@ -1,8 +1,8 @@
 'use client';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users, Plus, Search, Download, Filter,
-  ChevronDown, MoreHorizontal, X,
+  ChevronDown, MoreHorizontal, X, Eye, Edit, UserX,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
@@ -239,6 +239,18 @@ export default function HRPage() {
   const [filterDept, setFilterDept] = useState('');
   const [filterStatus, setFilterStatus] = useState<EmployeeStatus | ''>('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [actionMenu, setActionMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActionMenu(null);
+      }
+    }
+    if (actionMenu) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [actionMenu]);
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
@@ -311,7 +323,7 @@ export default function HRPage() {
       </div>
 
       {/* Table */}
-      <div className="table-wrap card-premium">
+      <div className="table-wrap card-premium table-scroll">
         <table className="emp-table">
           <thead>
             <tr>
@@ -320,7 +332,7 @@ export default function HRPage() {
               <th>Designation</th>
               <th>Status</th>
               <th>Join Date</th>
-              <th>Salary (₹)</th>
+              <th>Salary (&#8377;)</th>
               <th></th>
             </tr>
           </thead>
@@ -341,7 +353,7 @@ export default function HRPage() {
                       </div>
                       <div>
                         <div className="emp-name">{emp.name}</div>
-                        <div className="emp-meta">{emp.id} · {emp.email}</div>
+                        <div className="emp-meta">{emp.id} &middot; {emp.email}</div>
                       </div>
                     </div>
                   </td>
@@ -350,8 +362,40 @@ export default function HRPage() {
                   <td><StatusPill status={emp.status} /></td>
                   <td className="font-mono">{emp.joinDate}</td>
                   <td className="font-mono">{emp.status === 'terminated' ? '—' : `₹${emp.salary.toLocaleString('en-IN')}`}</td>
-                  <td>
-                    <button className="row-action"><MoreHorizontal size={16} /></button>
+                  <td style={{ position: 'relative' }}>
+                    <button className="row-action" onClick={() => setActionMenu(actionMenu === emp.id ? null : emp.id)}>
+                      <MoreHorizontal size={16} />
+                    </button>
+                    {actionMenu === emp.id && (
+                      <div ref={menuRef} style={{
+                        position: 'absolute', right: 0, top: '100%', zIndex: 50,
+                        background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                        borderRadius: 10, padding: '6px', minWidth: 160,
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.3)', animation: 'fadeIn 0.15s ease',
+                      }}>
+                        {[
+                          { icon: <Eye size={13}/>, label: 'View Profile', action: () => {} },
+                          { icon: <Edit size={13}/>, label: 'Edit Details', action: () => {} },
+                          { icon: <UserX size={13}/>, label: 'Deactivate', action: () => {
+                            setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status: 'terminated' as EmployeeStatus } : e));
+                            setActionMenu(null);
+                          }, danger: true },
+                        ].map(item => (
+                          <button key={item.label} onClick={item.action} style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                            background: 'transparent', color: (item as any).danger ? '#F43F5E' : 'var(--text-secondary)',
+                            fontSize: '0.82rem', fontWeight: 500, fontFamily: 'inherit', textAlign: 'left',
+                            transition: 'background 0.15s',
+                          }}
+                            onMouseEnter={e => (e.currentTarget.style.background = (item as any).danger ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.06)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            {item.icon}{item.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))

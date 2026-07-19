@@ -99,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('hrms_access_token', access_token);
     localStorage.setItem('hrms_refresh_token', refresh_token);
     localStorage.setItem('hrms_user', JSON.stringify(authUser));
+    document.cookie = `hrms_access_token=${access_token}; path=/; max-age=86400; SameSite=Lax`;
 
     setToken(access_token);
     setUser(authUser);
@@ -117,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('hrms_access_token');
       localStorage.removeItem('hrms_refresh_token');
       localStorage.removeItem('hrms_user');
+      document.cookie = 'hrms_access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       setUser(null);
       setToken(null);
       router.push('/login');

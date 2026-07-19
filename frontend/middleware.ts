@@ -16,7 +16,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('vaultiq_token');
+  const token = request.cookies.get('hrms_access_token');
 
   // Auth is handled client-side with AuthContext, but middleware prevents flash of unauthorized content
   if (pathname === '/') {

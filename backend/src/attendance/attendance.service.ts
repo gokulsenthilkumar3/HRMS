@@ -58,7 +58,7 @@ export class AttendanceService {
     const twoDaysAgo = new Date(); twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     const isBackdated = start < twoDaysAgo;
     return this.prisma.leaveRequest.create({
-      data: { userId, type: dto.type, startDate: start, endDate: end, days, reason: dto.reason, status: isBackdated ? 'PENDING' : 'PENDING', isBackdated },
+      data: { userId, type: dto.type, startDate: start, endDate: end, days, reason: dto.reason, status: isBackdated ? 'PENDING' : 'PENDING' },
     });
   }
 
@@ -79,7 +79,7 @@ export class AttendanceService {
   }
 
   async biometricSync(records: { employeeId: string; timestamp: string; type: 'IN'|'OUT' }[]) {
-    const results = [];
+    const results: any[] = [];
     for (const r of records) {
       const user = await this.prisma.user.findFirst({ where: { employeeId: r.employeeId } });
       if (!user) { results.push({ employeeId: r.employeeId, error: 'Not found' }); continue; }

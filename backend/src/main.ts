@@ -55,10 +55,10 @@ async function bootstrap() {
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
-    logger.log('Swagger docs: http://localhost:3001/api/docs', 'Bootstrap');
+    logger.log('Swagger docs: http://localhost:4000/api/docs', 'Bootstrap');
   }
 
-  const port = process.env.PORT || 3001;
+  const port = process.env.PORT || 4000;
   await app.listen(port);
   logger.log(`HRMS API running on http://localhost:${port}`, 'Bootstrap');
 }

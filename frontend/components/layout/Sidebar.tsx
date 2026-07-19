@@ -40,7 +40,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="nav-item" style={{background:'none',border:'none',cursor:'pointer',width:'100%'}} title="Logout" onClick={()=>{ localStorage.removeItem('hrms_token'); window.location.href='/auth/login'; }}>
+        <button className="nav-item" style={{background:'none',border:'none',cursor:'pointer',width:'100%'}} title="Logout" onClick={()=>{ localStorage.removeItem('hrms_access_token'); localStorage.removeItem('hrms_refresh_token'); localStorage.removeItem('hrms_user'); document.cookie='hrms_access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'; window.location.href='/login'; }}>
           <LogOut size={18}/>{!collapsed&&<span>Logout</span>}
         </button>
         <button className="collapse-btn" onClick={()=>setCollapsed(c=>!c)} title={collapsed?'Expand':'Collapse'}>

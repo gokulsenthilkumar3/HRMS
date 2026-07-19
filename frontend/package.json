@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.2",
     "@types/js-cookie": "^3.0.6",
     "@types/react-datepicker": "^7.0.0",
     "@yudiel/react-qr-scanner": "^2.6.0",
@@ -23,6 +24,8 @@
     "react": "^18",
     "react-datepicker": "^9.1.0",
     "react-dom": "^18",
+    "react-hook-form": "^7.81.0",
+    "react-is": "^19.2.7",
     "recharts": "^3.9.2",
     "socket.io-client": "^4.8.3",
     "swr": "^2.4.1",

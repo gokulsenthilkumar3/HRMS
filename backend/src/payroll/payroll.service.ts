@@ -79,7 +79,7 @@ export class PayrollService {
 
   async runPayroll(period: string, processedBy: string) {
     const employees = await this.prisma.user.findMany({ where: { isActive: true }, select: { id: true, department: true } });
-    const results = [];
+    const results: any[] = [];
     for (const emp of employees) {
       const lastPayslip = await this.prisma.payslip.findFirst({ where: { userId: emp.id }, orderBy: { date: 'desc' } });
       const basic = lastPayslip?.basicSalary ?? 50000;

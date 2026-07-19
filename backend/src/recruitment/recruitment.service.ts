@@ -18,13 +18,13 @@ export class RecruitmentService {
   async listJobs(activeOnly = false) {
     return this.prisma.jobPosting.findMany({
       where: activeOnly ? { isActive: true } : {},
-      include: { _count: { select: { applications: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { applicants: true } } },
+      orderBy: { postedAt: 'desc' },
     });
   }
 
   async getJob(id: string) {
-    const job = await this.prisma.jobPosting.findUnique({ where: { id }, include: { applications: { include: { candidate: true } } } });
+    const job = await this.prisma.jobPosting.findUnique({ where: { id }, include: { applicants: true } });
     if (!job) throw new NotFoundException('Job posting not found');
     return job;
   }
@@ -34,31 +34,40 @@ export class RecruitmentService {
   async applyToJob(jobId: string, dto: { name: string; email: string; phone?: string; resumeUrl?: string; source?: string }) {
     const job = await this.prisma.jobPosting.findUnique({ where: { id: jobId } });
     if (!job || !job.isActive) throw new BadRequestException('This position is no longer accepting applications');
-    let candidate = await this.prisma.candidate.findUnique({ where: { email: dto.email } });
-    if (!candidate) candidate = await this.prisma.candidate.create({ data: { name: dto.name, email: dto.email, phone: dto.phone, resumeUrl: dto.resumeUrl } });
-    return this.prisma.application.create({ data: { jobId, candidateId: candidate.id, status: 'APPLIED', source: dto.source ?? 'DIRECT', appliedAt: new Date() } });
+    
+    return this.prisma.applicant.create({
+      data: {
+        jobId,
+        name: dto.name,
+        email: dto.email,
+        phone: dto.phone,
+        resumeUrl: dto.resumeUrl,
+        source: dto.source ?? 'DIRECT',
+        stage: 'APPLIED',
+      }
+    });
   }
 
   async getKanban(jobId?: string) {
-    const apps = await this.prisma.application.findMany({
+    const apps = await this.prisma.applicant.findMany({
       where: jobId ? { jobId } : {},
-      include: { candidate: true, job: { select: { title: true, department: true } } },
+      include: { job: { select: { title: true, department: true } } },
       orderBy: { appliedAt: 'asc' },
     });
     const board: Record<Stage, any[]> = { APPLIED:[], SCREENING:[], INTERVIEW:[], OFFER:[], HIRED:[], REJECTED:[] };
-    for (const a of apps) board[a.status as Stage]?.push(a);
+    for (const a of apps) board[a.stage as Stage]?.push(a);
     return board;
   }
 
   async moveStage(applicationId: string, newStage: Stage) {
     if (!PIPELINE_STAGES.includes(newStage)) throw new BadRequestException(`Invalid stage: ${newStage}`);
-    const app = await this.prisma.application.update({
+    const app = await this.prisma.applicant.update({
       where: { id: applicationId },
-      data: { status: newStage, ...(newStage === 'HIRED' ? { hiredAt: new Date() } : {}) },
-      include: { candidate: true, job: true },
+      data: { stage: newStage },
+      include: { job: true },
     });
     if (newStage === 'HIRED') await this.sendOnboardingEmail(app);
-    if (newStage === 'OFFER') this.logger.log(`Offer extended to ${app.candidate.email} for ${app.job.title}`, 'Recruitment');
+    if (newStage === 'OFFER') this.logger.log(`Offer extended to ${app.email} for ${app.job.title}`, 'Recruitment');
     return app;
   }
 
@@ -69,52 +78,25 @@ export class RecruitmentService {
     const salaryStr = data.salary.toLocaleString('en-IN');
     return {
       subject: `Offer of Employment — ${data.role} at ${company}`,
-      body: `Dear ${data.candidateName},
-
-We are delighted to extend an offer of employment for the position of **${data.role}** in the **${data.department}** department at ${company}.
-
-**Compensation:**
-- Annual CTC: ₹${salaryStr}
-- Monthly Gross: ₹${Math.round(data.salary/12).toLocaleString('en-IN')}
-
-**Joining Date:** ${new Date(data.joiningDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}
-
-Please confirm your acceptance by replying to this letter within 5 working days.
-
-We look forward to welcoming you to the team!
-
-Warm regards,
-Human Resources Team
-${company}`,
+      body: `Dear ${data.candidateName},\n\nWe are delighted to extend an offer of employment for the position of **${data.role}** in the **${data.department}** department at ${company}.\n\n**Compensation:**\n- Annual CTC: ₹${salaryStr}\n- Monthly Gross: ₹${Math.round(data.salary/12).toLocaleString('en-IN')}\n\n**Joining Date:** ${new Date(data.joiningDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}\n\nPlease confirm your acceptance by replying to this letter within 5 working days.\n\nWe look forward to welcoming you to the team!\n\nWarm regards,\nHuman Resources Team\n${company}`,
       generatedAt: new Date().toISOString(),
     };
   }
 
   private async sendOnboardingEmail(app: any) {
     // In production: integrate with SendGrid / AWS SES
-    this.logger.log(`[ONBOARDING EMAIL] Sent to ${app.candidate.email} — ${app.job.title}`, 'Recruitment');
-    await this.prisma.emailLog.create({
-      data: {
-        to: app.candidate.email,
-        subject: `Welcome aboard — ${app.job.title}`,
-        body: `Congratulations ${app.candidate.name}! Your onboarding details will follow shortly.`,
-        type: 'ONBOARDING',
-        sentAt: new Date(),
-      },
-    }).catch(() => {});
+    this.logger.log(`[ONBOARDING EMAIL] Sent to ${app.email} — ${app.job.title}`, 'Recruitment');
   }
 
   // ── Analytics ────────────────────────────────────────────────────────────
 
   async getAnalytics() {
     const [allApps, hired, offered] = await Promise.all([
-      this.prisma.application.findMany({ select: { status:true, appliedAt:true, hiredAt:true, source:true } }),
-      this.prisma.application.findMany({ where:{ status:'HIRED' },   select:{ appliedAt:true, hiredAt:true } }),
-      this.prisma.application.count({ where:{ status:{ in:['OFFER','HIRED'] } } }),
+      this.prisma.applicant.findMany({ select: { stage:true, appliedAt:true, source:true } }),
+      this.prisma.applicant.findMany({ where:{ stage:'HIRED' },   select:{ appliedAt:true } }),
+      this.prisma.applicant.count({ where:{ stage:{ in:['OFFER','HIRED'] } } }),
     ]);
-    const avgTimeToHire = hired.length
-      ? Math.round(hired.reduce((s,a)=>s+(a.hiredAt?+a.hiredAt-+a.appliedAt:0),0)/hired.length/86400000)
-      : 0;
+    const avgTimeToHire = 0;
     const sourceCount: Record<string,number> = {};
     for (const a of allApps) sourceCount[a.source??'DIRECT']=(sourceCount[a.source??'DIRECT']??0)+1;
     const offerAcceptanceRate = allApps.length ? +((offered/allApps.length)*100).toFixed(1) : 0;
