@@ -3,7 +3,7 @@ import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { Users, TrendingDown, Briefcase, UserPlus, Clock, Activity } from 'lucide-react';
+import { Users, TrendingDown, Briefcase, UserPlus, Clock, Activity, ArrowUpRight, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
 
@@ -49,7 +49,7 @@ function KpiSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, isManager } = useAuth();
   const { data: stats, isLoading: sLoad } = useQuery({ queryKey: ['dashboard-stats'],  queryFn: () => api.get<any>('/dashboard/stats'),  staleTime: 60_000 });
   const { data: trends, isLoading: tLoad } = useQuery({ queryKey: ['dashboard-trends'], queryFn: () => api.get<any>('/dashboard/trends'), staleTime: 60_000 });
 
@@ -57,11 +57,13 @@ export default function DashboardPage() {
     <div className="dash-page">
       <div className="dash-header">
         <div>
-          <h1 className="dash-title">HR Dashboard</h1>
+          <div className="eyebrow"><span className="eyebrow-dot" />Live workspace</div>
+          <h1 className="dash-title">Good morning, {user?.fullName?.split(' ')[0] ?? 'there'}</h1>
           <p className="dash-sub">Welcome back, {user?.fullName?.split(' ')[0] ?? 'there'} · Real-time people analytics</p>
         </div>
         <div className="dash-actions">
-          <Link href="/hr/add" className="btn-primary-sm">+ Add Employee</Link>
+          <div className="health-pill"><CheckCircle2 size={14} /> All systems operational</div>
+          {isManager && <Link href="/hr/add" className="btn-primary-sm">+ Add Employee</Link>}
         </div>
       </div>
 
@@ -100,19 +102,23 @@ export default function DashboardPage() {
       <style>{`
         .dash-page { padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; max-width: 1400px; }
         .dash-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-        .dash-title { font-family: var(--font-sora,sans-serif); font-size: 1.65rem; font-weight: 800; color: var(--text-primary); margin: 0; line-height: 1.2; }
+        .eyebrow { display:flex; align-items:center; gap:7px; color:#818CF8; font-size:.68rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; margin-bottom:8px; }
+        .eyebrow-dot { width:7px; height:7px; border-radius:50%; background:#10B981; box-shadow:0 0 0 4px rgba(16,185,129,.12); }
+        .dash-title { font-family: var(--font-sora,sans-serif); font-size: 1.8rem; font-weight: 800; letter-spacing:-.03em; color: var(--text-primary); margin: 0; line-height: 1.2; }
         .dash-sub { font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0; }
-        .dash-actions { display: flex; gap: 10px; align-items: center; }
+        .dash-actions { display: flex; gap: 10px; align-items: center; flex-wrap:wrap; }
+        .health-pill { display:flex; align-items:center; gap:6px; padding:8px 11px; border-radius:8px; color:#6EE7B7; background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.15); font-size:.72rem; font-weight:700; }
         .btn-primary-sm { background: linear-gradient(135deg,#6366F1,#8B5CF6); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:0.82rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 14px rgba(99,102,241,0.3); transition:opacity 0.15s,transform 0.15s; }
         .btn-primary-sm:hover { opacity:0.88; transform:translateY(-1px); }
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 16px; }
-        .kpi-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 20px; display: flex; align-items: center; gap: 14px; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; }
+        .kpi-card { background: linear-gradient(145deg, var(--card-bg), rgba(99,102,241,.025)); border: 1px solid var(--card-border); border-radius: 14px; padding: 20px; display: flex; align-items: center; gap: 14px; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; min-height:88px; }
         .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.25); border-color: var(--border-hover); }
         .kpi-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .kpi-value { font-size: 1.55rem; font-weight: 800; font-family: var(--font-sora,sans-serif); color: var(--text-primary); line-height: 1; }
         .kpi-label { font-size: 0.71rem; color: var(--text-secondary); margin-top: 4px; font-weight: 500; }
         .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        @media(max-width:900px){ .charts-row { grid-template-columns: 1fr; } .dash-page { padding: 16px; } .kpi-grid { grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); } }
+        @media(max-width:900px){ .charts-row { grid-template-columns: 1fr; } .dash-page { padding: 20px 16px 32px; } .kpi-grid { grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); } }
+        @media(max-width:560px){ .dash-title { font-size:1.45rem; } .health-pill { width:100%; justify-content:center; } .dash-actions { width:100%; } .btn-primary-sm { flex:1; justify-content:center; } }
         .chart-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 22px; }
         .chart-title { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin: 0 0 16px; }
         .chart-skeleton { height: 220px; border-radius: 10px; background: linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }

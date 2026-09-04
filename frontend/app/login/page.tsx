@@ -2,7 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
 
 // ---------- 3D Particle Globe (Canvas-based, no external lib) ----------
 function ParticleGlobe() {
@@ -110,10 +111,20 @@ export default function LoginPage() {
   const [pwdErr, setPwdErr]     = useState('');
   const [loading, setLoading]   = useState(false);
   const [apiErr, setApiErr]     = useState('');
+  const [registered, setRegistered] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) router.replace('/dashboard');
   }, [user, authLoading]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registered') === '1') {
+      setRegistered(true);
+      const registeredEmail = params.get('email');
+      if (registeredEmail) setEmail(registeredEmail);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,21 +137,13 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err: any) {
-      setApiErr(err.message || 'Login failed. Please try again.');
+      const message = String(err?.message || '');
+      setApiErr(message.toLowerCase().includes('fetch')
+        ? 'We couldn’t connect to the sign-in service. Check your connection and try again.'
+        : message || 'We couldn’t sign you in. Please check your details and try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (role: 'admin' | 'manager' | 'user') => {
-    const creds = {
-      admin:   { email: 'admin@company.com',       password: 'password123' },
-      manager: { email: 'manager@company.com',     password: 'Manager@2026' },
-      user:    { email: 'emp001@company.com',       password: 'Emp@001' },
-    };
-    setEmail(creds[role].email);
-    setPassword(creds[role].password);
-    setEmailErr(''); setPwdErr(''); setApiErr('');
   };
 
   return (
@@ -165,17 +168,17 @@ export default function LoginPage() {
         <h1 className="login-heading">Welcome back</h1>
         <p className="login-sub">Sign in to manage your workforce</p>
 
-        {/* Quick-fill demo pills */}
-        <div className="demo-pills">
-          <span className="demo-label">Quick fill:</span>
-          <button type="button" className="pill pill-admin"   onClick={() => fillDemo('admin')}>Admin</button>
-          <button type="button" className="pill pill-manager" onClick={() => fillDemo('manager')}>Manager</button>
-          <button type="button" className="pill pill-user"    onClick={() => fillDemo('user')}>Employee</button>
-        </div>
+        {registered && (
+          <div className="signup-success" role="status">
+            <CheckCircle2 size={16} />
+            <span>Account created. Sign in with your new password.</span>
+          </div>
+        )}
 
         {apiErr && (
-          <div className="api-error">
-            <AlertCircle size={14} /> {apiErr}
+          <div className="api-error" role="alert" aria-live="polite">
+            <AlertCircle size={16} />
+            <span>{apiErr}</span>
           </div>
         )}
 
@@ -209,7 +212,7 @@ export default function LoginPage() {
           </div>
 
           <div className="forgot-row">
-            <a href="#" className="forgot-link">Forgot password?</a>
+            <span className="account-help">Forgot your password? Contact your administrator.</span>
           </div>
 
           <button type="submit" className="btn-login" disabled={loading}>
@@ -217,7 +220,9 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="login-footer">⚡ Protected by enterprise-grade security &middot; ISO 27001</p>
+        <div className="signup-prompt">New to HRMS? <Link href="/signup">Create an account</Link></div>
+
+        <p className="login-footer">⚡ Encrypted sign-in &middot; Role-based access</p>
       </div>
 
       <style>{`
@@ -250,22 +255,17 @@ export default function LoginPage() {
         .brand { display: flex; align-items: center; gap: 12px; }
         .brand-icon { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg,#6366F1,#8B5CF6); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 900; color: #fff; font-family: var(--font-sora,sans-serif); box-shadow: 0 8px 24px rgba(99,102,241,0.35); }
         .brand-name { font-family: var(--font-sora,sans-serif); font-size: 1.05rem; font-weight: 800; color: #F0F2FF; }
-        .brand-tagline { font-size: 0.68rem; color: #4B5278; }
-        .login-heading { font-family: var(--font-sora,sans-serif); font-size: 1.6rem; font-weight: 800; color: #F0F2FF; margin: 0; }
+        .brand-tagline { font-size: 0.68rem; color: #697397; }
+        .login-heading { font-family: var(--font-sora,sans-serif); font-size: 1.6rem; font-weight: 800; letter-spacing: -.03em; color: #F0F2FF; margin: 0; }
         .login-sub { font-size: 0.85rem; color: #9BA3C0; margin: -8px 0 0; }
 
-        .demo-pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .demo-label { font-size: 0.72rem; color: #4B5278; }
-        .pill { padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; border: 1px solid; cursor: pointer; transition: all 0.15s; background: transparent; }
-        .pill-admin   { border-color: rgba(244,63,94,0.4);   color: #F43F5E; } .pill-admin:hover   { background: rgba(244,63,94,0.1);   }
-        .pill-manager { border-color: rgba(245,158,11,0.4);  color: #F59E0B; } .pill-manager:hover { background: rgba(245,158,11,0.1);  }
-        .pill-user    { border-color: rgba(16,185,129,0.4);  color: #10B981; } .pill-user:hover    { background: rgba(16,185,129,0.1);  }
-
-        .api-error { display: flex; align-items: center; gap: 7px; background: rgba(244,63,94,0.08); border: 1px solid rgba(244,63,94,0.2); color: #F43F5E; border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; }
+        .api-error { display: flex; align-items: flex-start; gap: 9px; background: rgba(244,63,94,0.08); border: 1px solid rgba(244,63,94,0.26); color: #FDA4AF; border-radius: 10px; padding: 11px 13px; font-size: 0.78rem; line-height: 1.4; }
+        .signup-success { display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:10px; color:#6ee7b7; background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.22); font-size:.78rem; line-height:1.4; }
         .login-form { display: flex; flex-direction: column; gap: 14px; }
         .field { display: flex; flex-direction: column; gap: 6px; }
-        .field label { font-size: 0.78rem; font-weight: 600; color: #9BA3C0; }
-        .field input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 12px 14px; color: #F0F2FF; font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; width: 100%; }
+        .field label { font-size: 0.76rem; font-weight: 700; color: #AEB6D2; }
+        .field input { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 14px; color: #F0F2FF; font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s, background .2s; width: 100%; }
+        .field input:hover { background: rgba(255,255,255,0.07); }
         .field input:focus { border-color: #6366F1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
         .field input.input-error { border-color: #F43F5E !important; }
         .field-error { font-size: 0.72rem; color: #F43F5E; }
@@ -273,7 +273,7 @@ export default function LoginPage() {
         .pwd-wrap input { padding-right: 44px; }
         .pwd-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #4B5278; cursor: pointer; display: flex; align-items: center; }
         .forgot-row { display: flex; justify-content: flex-end; margin: -4px 0; }
-        .forgot-link { font-size: 0.78rem; color: #818CF8; transition: color 0.2s; } .forgot-link:hover { color: #6366F1; }
+        .account-help { font-size: 0.72rem; color: #697397; }
         .btn-login { background: linear-gradient(135deg,#6366F1,#8B5CF6); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 0.92rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s, transform 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; box-shadow: 0 8px 24px rgba(99,102,241,0.3); }
         .btn-login:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
         .btn-login:active:not(:disabled) { transform: translateY(0); }
@@ -281,7 +281,19 @@ export default function LoginPage() {
         .spin { animation: spin 0.7s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .login-footer { font-size: 0.72rem; color: #4B5278; text-align: center; }
+        .signup-prompt { color:#697397; font-size:.78rem; text-align:center; margin-top:-3px; }
+        .signup-prompt a { color:#a5b4fc; font-weight:700; }
+        .signup-prompt a:hover { color:#c7d2fe; }
         @keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 480px) {
+          .login-bg { padding: 14px; align-items: center; }
+          .login-card { max-width: 100%; padding: 30px 22px; border-radius: 20px; gap: 14px; }
+          .login-heading { font-size: 1.42rem; }
+          .globe-canvas { opacity: .3; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .login-card, .orb { animation: none; }
+        }
       `}</style>
     </div>
   );

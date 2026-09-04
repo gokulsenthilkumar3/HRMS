@@ -18,7 +18,7 @@ export class ProcurementController {
   @Post('auto-replenish')
   async triggerAutoReplenish(@Req() req: any, @Body() data: { assetTypeId: string, threshold: number }) {
     // Note: Assuming JwtAuthGuard is added, else we mock user id
-    const userId = req.user ? req.user.sub : 'system-override';
+    const userId = req.user ? req.user.userId : 'system-override';
     return this.procurementService.autoReplenish(data.assetTypeId, data.threshold, userId);
   }
 }

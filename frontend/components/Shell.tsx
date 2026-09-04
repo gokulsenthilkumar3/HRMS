@@ -5,16 +5,16 @@ import { useAuth } from '../context/AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
 import { useNotifications } from '@/hooks/useNotifications';
 import { NotificationCenter } from '@/components/layout/NotificationCenter';
+import CommandPalette from '@/components/CommandPalette';
+import { useCommandPalette } from '@/hooks/useCommandPalette';
 import {
   LayoutDashboard,
   Users,
-  UserCheck,
   CalendarClock,
   DollarSign,
   TrendingUp,
   GraduationCap,
   Briefcase,
-  ClipboardList,
   MessageSquare,
   Settings,
   LogOut,
@@ -22,11 +22,12 @@ import {
   X,
   Sun,
   Moon,
-  Building2,
   UserPlus,
   BarChart3,
   ShieldCheck,
   Package,
+  Search,
+  ChevronRight,
 } from 'lucide-react';
 
 type NavItem = {
@@ -64,16 +65,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Users size={17} />,
       },
       {
-        href: '/hr/onboarding',
-        label: 'Onboarding',
-        purpose: 'New hire checklist',
+        href: '/hr/add',
+        label: 'Add Employee',
+        purpose: 'Create employee record',
         icon: <UserPlus size={17} />,
-      },
-      {
-        href: '/hr/org-chart',
-        label: 'Org Chart',
-        purpose: 'Company hierarchy',
-        icon: <Building2 size={17} />,
+        roles: ['ADMIN', 'MANAGER'],
       },
     ],
   },
@@ -125,12 +121,14 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Compliance',
         purpose: 'Policies & audits',
         icon: <ShieldCheck size={17} />,
+        roles: ['ADMIN', 'MANAGER'],
       },
       {
         href: '/reports',
         label: 'Reports',
         purpose: 'HR analytics exports',
         icon: <BarChart3 size={17} />,
+        roles: ['ADMIN', 'MANAGER'],
       },
     ],
   },
@@ -154,7 +152,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Settings',
         purpose: 'Company & roles',
         icon: <Settings size={17} />,
-        roles: ['superAdmin', 'hrManager'],
+        roles: ['ADMIN'],
       },
     ],
   },
@@ -173,6 +171,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return true;
   });
   const { notifications, markAllRead, dismiss } = useNotifications();
+  const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
 
   const normalizedPath = '/' + (pathname.replace(/^\//, '').split('/')[0] || '');
 
@@ -191,7 +190,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     localStorage.setItem('hrms-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  if (normalizedPath === '/login' || normalizedPath === '/') return <>{children}</>;
+  if (normalizedPath === '/login' || normalizedPath === '/signup' || normalizedPath === '/') return <>{children}</>;
 
   if (loading || !user) {
     return (
@@ -209,10 +208,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     .toUpperCase();
 
   const roleLabel: Record<string, string> = {
-    superAdmin: 'Super Admin',
-    hrManager: 'HR Manager',
-    teamLead: 'Team Lead',
-    employee: 'Employee',
+    ADMIN: 'Administrator',
+    MANAGER: 'Manager',
+    USER: 'Employee',
   };
 
   return (
@@ -259,19 +257,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
           {/* Nav groups */}
           <div className="nav-scroll">
-            {NAV_GROUPS.map((group) => (
-              <div key={group.label} className="nav-group">
-                <div className="nav-group-title">{group.label}</div>
-                <ul>
-                  {group.items
-                    .filter(
-                      (item) =>
-                        !item.roles || item.roles.includes(user.role)
-                    )
-                    .map((item) => {
+            {NAV_GROUPS.map((group) => {
+              const visibleItems = group.items.filter((item) => !item.roles || item.roles.includes(user.role));
+              if (!visibleItems.length) return null;
+              return (
+                <div key={group.label} className="nav-group">
+                  <div className="nav-group-title">{group.label}</div>
+                  <ul>
+                    {visibleItems.map((item) => {
                       const isActive =
                         pathname === item.href ||
-                        (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                        (item.href !== '/dashboard' && item.href !== '/hr' && pathname.startsWith(`${item.href}/`));
                       return (
                         <li key={item.href}>
                           <Link
@@ -287,9 +283,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                         </li>
                       );
                     })}
-                </ul>
-              </div>
-            ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
 
           {/* Bottom: theme toggle + user */}
@@ -323,8 +320,38 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Main */}
-        <main className="main-content">{children}</main>
+        <main className="main-content">
+          <header className="app-topbar">
+            <div className="breadcrumb" aria-label="Current location">
+              <span className="breadcrumb-muted">Workspace</span>
+              <ChevronRight size={14} />
+              <span className="breadcrumb-current">{pathname === '/dashboard' ? 'Dashboard' : pathname.split('/')[1]?.replace('-', ' ') || 'Workspace'}</span>
+            </div>
+            <div className="topbar-actions">
+              <button className="global-search" type="button" onClick={() => setCommandOpen(true)} aria-label="Search pages and actions">
+                <Search size={16} aria-hidden="true" />
+                <span>Search pages and actions</span>
+                <kbd>Ctrl K</kbd>
+              </button>
+              <NotificationCenter
+                notifications={notifications}
+                onMarkAllRead={markAllRead}
+                onDismiss={dismiss}
+              />
+              <div className="topbar-user" title={user.fullName}>
+                <div className="avatar avatar-sm">{initials}</div>
+                <div className="topbar-user-copy">
+                  <strong>{user.fullName}</strong>
+                  <span>{roleLabel[user.role] ?? user.role}</span>
+                </div>
+              </div>
+            </div>
+          </header>
+          {children}
+        </main>
       </div>
+
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
 
       <style>{`
         .shell-loader {
@@ -339,6 +366,26 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           animation: spin 0.7s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        .app-topbar {
+          min-height: 68px; padding: 0 32px; display: flex; align-items: center;
+          justify-content: space-between; gap: 20px; position: sticky; top: 0; z-index: 40;
+          background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
+          border-bottom: 1px solid var(--border-color); backdrop-filter: blur(16px);
+        }
+        .breadcrumb { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: .78rem; text-transform: capitalize; }
+        .breadcrumb-muted { color: var(--text-muted); }
+        .breadcrumb-current { color: var(--text-primary); font-weight: 700; }
+        .topbar-actions { display: flex; align-items: center; gap: 12px; }
+        .global-search { width: min(310px, 28vw); min-width: 190px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--card-bg); color: var(--text-muted); cursor:pointer; font-family:inherit; }
+        .global-search:focus-visible { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-glow); outline:0; }
+        .global-search span { min-width: 0; flex: 1; overflow:hidden; text-align:left; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size: .78rem; }
+        .global-search kbd { padding: 2px 5px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-muted); font: 600 .65rem var(--font-sans); }
+        .topbar-user { display: flex; align-items: center; gap: 9px; padding-left: 4px; }
+        .avatar-sm { width: 32px; height: 32px; font-size: .65rem; }
+        .topbar-user-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .topbar-user-copy strong { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }
+        .topbar-user-copy span { color: var(--text-muted); font-size: .64rem; text-transform: uppercase; letter-spacing: .04em; }
 
         /* Logo */
         .logo-icon {

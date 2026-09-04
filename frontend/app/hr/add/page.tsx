@@ -1,47 +1,44 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { api } from '../../../lib/api';
 import { UserPlus, CheckCircle2, AlertCircle, Loader2, ChevronLeft, Copy, Check } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const DEPARTMENTS = ['Engineering', 'Product', 'Design', 'Human Resources', 'Finance', 'Marketing', 'Operations', 'Legal', 'Sales', 'Customer Support'];
-const DESIGNATIONS: Record<string, string[]> = {
-  Engineering: ['Junior Engineer', 'Software Engineer', 'Senior Engineer', 'Lead Engineer', 'Staff Engineer', 'Principal Engineer', 'Engineering Manager'],
-  Product:     ['Associate PM', 'Product Manager', 'Senior PM', 'Group PM', 'Director of Product'],
-  Design:      ['UI Designer', 'UX Designer', 'UI/UX Designer', 'Senior Designer', 'Design Lead', 'Head of Design'],
-  'Human Resources': ['HR Executive', 'HR Generalist', 'HR Manager', 'HRBP', 'Head of HR', 'Chief People Officer'],
-  Finance:     ['Analyst', 'Senior Analyst', 'Finance Manager', 'Controller', 'CFO'],
-  Marketing:   ['Marketing Executive', 'Digital Marketer', 'Marketing Manager', 'Growth Manager'],
-  Operations:  ['Operations Executive', 'Operations Manager', 'VP Operations'],
-  Legal:       ['Legal Executive', 'Legal Counsel', 'Head of Legal'],
-  Sales:       ['Sales Executive', 'Senior Sales', 'Account Manager', 'Sales Manager', 'VP Sales'],
-  'Customer Support': ['Support Executive', 'Support Lead', 'Customer Success Manager'],
+type DirectoryOptions = {
+  departments: Array<{ name: string; designations: string[] }>;
+  managers: Array<{ id: string; fullName: string; employeeId: string | null; department: string | null }>;
 };
 
 type FormState = {
   fullName: string; email: string; phone: string;
   department: string; designation: string;
   employmentType: string; hireDate: string;
-  gender: string; city: string; state: string;
+  gender: string; city: string; state: string; country: string;
+  managerId: string; role: 'USER' | 'MANAGER';
 };
 
 type Errors = Partial<Record<keyof FormState, string>>;
 
-const PHONE_RE = /^\+91\s?[6-9]\d{9}$/;
+function localToday() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+const PHONE_RE = /^\+?[0-9][0-9\s().-]{6,24}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const NAME_RE  = /^[A-Za-z\s\.]+$/;
 
 function validate(form: FormState): Errors {
   const e: Errors = {};
   if (!form.fullName.trim())                    e.fullName    = 'Full name is required';
-  else if (!NAME_RE.test(form.fullName))        e.fullName    = 'Name should contain only letters and spaces';
-  else if (form.fullName.trim().length < 3)     e.fullName    = 'Name must be at least 3 characters';
+  else if (form.fullName.trim().length < 2)     e.fullName    = 'Name must be at least 2 characters';
 
   if (!form.email.trim())                       e.email       = 'Email is required';
   else if (!EMAIL_RE.test(form.email))          e.email       = 'Enter a valid email address';
 
-  if (form.phone && !PHONE_RE.test(form.phone)) e.phone       = 'Enter a valid Indian mobile (+91 9XXXXXXXXX)';
+  if (form.phone && !PHONE_RE.test(form.phone)) e.phone       = 'Enter a valid phone number, including the country code';
 
   if (!form.department)                         e.department  = 'Select a department';
   if (!form.hireDate)                           e.hireDate    = 'Hire date is required';
@@ -52,17 +49,32 @@ function validate(form: FormState): Errors {
 export default function AddEmployeePage() {
   const { isAdmin, isManager } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>({
     fullName: '', email: '', phone: '',
     department: '', designation: '', employmentType: 'FULL_TIME',
-    hireDate: new Date().toISOString().split('T')[0],
-    gender: 'PREFER_NOT_TO_SAY', city: '', state: '',
+    hireDate: localToday(),
+    gender: 'PREFER_NOT_TO_SAY', city: '', state: '', country: '',
+    managerId: '', role: 'USER',
   });
   const [errors, setErrors]   = useState<Errors>({});
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState<{ employeeId: string; employeeCode: string; temporaryPassword: string } | null>(null);
   const [copied, setCopied]   = useState(false);
   const [apiErr, setApiErr]   = useState('');
+  const { data: directoryOptions, isLoading: optionsLoading } = useQuery({
+    queryKey: ['directory-options'],
+    queryFn: () => api.get<DirectoryOptions>('/users/directory-options'),
+    enabled: isManager,
+    staleTime: 60_000,
+  });
+
+  const selectedDepartment = directoryOptions?.departments.find(
+    ({ name }) => name.toLocaleLowerCase() === form.department.trim().toLocaleLowerCase(),
+  );
+  const designationOptions = selectedDepartment?.designations ?? Array.from(new Set(
+    directoryOptions?.departments.flatMap(({ designations }) => designations) ?? [],
+  )).sort((a, b) => a.localeCompare(b));
 
   if (!isAdmin && !isManager) {
     return <div className="no-access">You do not have permission to add employees.</div>;
@@ -71,7 +83,6 @@ export default function AddEmployeePage() {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
     if (errors[k]) setErrors((err) => ({ ...err, [k]: undefined }));
-    if (k === 'department') setForm((f) => ({ ...f, department: e.target.value, designation: '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,12 +93,25 @@ export default function AddEmployeePage() {
     setLoading(true); setApiErr('');
     try {
       const res = await api.post<any>('/users', {
-        ...form,
+        fullName: form.fullName.trim(),
+        email: form.email.trim().toLocaleLowerCase(),
         phone: form.phone || undefined,
+        department: form.department.trim(),
         designation: form.designation || undefined,
+        employmentType: form.employmentType,
+        hireDate: form.hireDate,
+        gender: form.gender,
         city: form.city || undefined,
         state: form.state || undefined,
+        country: form.country || undefined,
+        managerId: form.managerId || undefined,
+        role: isAdmin ? form.role : undefined,
       });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['employees'] }),
+        queryClient.invalidateQueries({ queryKey: ['directory-options'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
+      ]);
       setResult({ employeeId: res.employeeId, employeeCode: res.employeeCode, temporaryPassword: res.temporaryPassword });
     } catch (err: any) {
       setApiErr(err.message || 'Failed to add employee');
@@ -118,7 +142,7 @@ export default function AddEmployeePage() {
             <button className="btn btn-copy" onClick={copyAll}>
               {copied ? <><Check size={14}/> Copied!</> : <><Copy size={14}/> Copy Credentials</>}
             </button>
-            <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ fullName:'',email:'',phone:'',department:'',designation:'',employmentType:'FULL_TIME',hireDate:new Date().toISOString().split('T')[0],gender:'PREFER_NOT_TO_SAY',city:'',state:'' }); }}>
+            <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ fullName:'',email:'',phone:'',department:'',designation:'',employmentType:'FULL_TIME',hireDate:localToday(),gender:'PREFER_NOT_TO_SAY',city:'',state:'',country:'',managerId:'',role:'USER' }); }}>
               Add Another Employee
             </button>
             <button className="btn btn-outline" onClick={() => router.push('/hr')}>Go to Employee List</button>
@@ -152,8 +176,8 @@ export default function AddEmployeePage() {
             <Field label="Work Email *" error={errors.email}>
               <input type="email" placeholder="emp@company.com" value={form.email} onChange={set('email')} className={errors.email ? 'input-error' : ''} />
             </Field>
-            <Field label="Mobile (+91)" error={errors.phone}>
-              <input type="tel" placeholder="+91 9XXXXXXXXX" value={form.phone} onChange={set('phone')} className={errors.phone ? 'input-error' : ''} />
+            <Field label="Phone" error={errors.phone}>
+              <input type="tel" placeholder="Include country code" value={form.phone} onChange={set('phone')} className={errors.phone ? 'input-error' : ''} autoComplete="tel" />
             </Field>
             <Field label="Gender">
               <select value={form.gender} onChange={set('gender')}>
@@ -163,8 +187,9 @@ export default function AddEmployeePage() {
                 <option value="OTHER">Other</option>
               </select>
             </Field>
-            <Field label="City"><input type="text" placeholder="Chennai" value={form.city} onChange={set('city')} /></Field>
-            <Field label="State"><input type="text" placeholder="Tamil Nadu" value={form.state} onChange={set('state')} /></Field>
+            <Field label="City"><input type="text" value={form.city} onChange={set('city')} autoComplete="address-level2" /></Field>
+            <Field label="State / Region"><input type="text" value={form.state} onChange={set('state')} autoComplete="address-level1" /></Field>
+            <Field label="Country"><input type="text" value={form.country} onChange={set('country')} autoComplete="country-name" /></Field>
           </div>
         </div>
 
@@ -172,16 +197,12 @@ export default function AddEmployeePage() {
           <h3 className="section-title">Employment Details</h3>
           <div className="form-grid">
             <Field label="Department *" error={errors.department}>
-              <select value={form.department} onChange={set('department')} className={errors.department ? 'input-error' : ''}>
-                <option value="">Select department</option>
-                {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <input list="department-options" value={form.department} onChange={set('department')} className={errors.department ? 'input-error' : ''} placeholder={optionsLoading ? 'Loading departments…' : 'Type or select a department'} />
+              <datalist id="department-options">{directoryOptions?.departments.map(({ name }) => <option key={name} value={name} />)}</datalist>
             </Field>
             <Field label="Designation">
-              <select value={form.designation} onChange={set('designation')} disabled={!form.department}>
-                <option value="">{form.department ? 'Select designation' : 'Select dept first'}</option>
-                {(DESIGNATIONS[form.department] || []).map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <input list="designation-options" value={form.designation} onChange={set('designation')} placeholder="Type or select a job title" />
+              <datalist id="designation-options">{designationOptions.map((item) => <option key={item} value={item} />)}</datalist>
             </Field>
             <Field label="Employment Type">
               <select value={form.employmentType} onChange={set('employmentType')}>
@@ -194,11 +215,25 @@ export default function AddEmployeePage() {
             <Field label="Hire Date *" error={errors.hireDate}>
               <input type="date" value={form.hireDate} onChange={set('hireDate')} className={errors.hireDate ? 'input-error' : ''} />
             </Field>
+            <Field label="Manager">
+              <select value={form.managerId} onChange={set('managerId')}>
+                <option value="">No manager assigned</option>
+                {directoryOptions?.managers.map((manager) => (
+                  <option key={manager.id} value={manager.id}>{manager.fullName}{manager.department ? ` · ${manager.department}` : ''}</option>
+                ))}
+              </select>
+            </Field>
+            {isAdmin && <Field label="Access Role">
+              <select value={form.role} onChange={set('role')}>
+                <option value="USER">Employee</option>
+                <option value="MANAGER">Manager</option>
+              </select>
+            </Field>}
           </div>
         </div>
 
         <div className="info-note">
-          🔐 A temporary password will be auto-generated as <strong>Emp@{'{XXXX}'}</strong> where XXXX is the employee code suffix. You can share it after submission.
+          🔐 A secure, one-time temporary password will be generated after submission. It is not derived from the employee ID.
         </div>
 
         <button type="submit" className="submit-btn" disabled={loading}>

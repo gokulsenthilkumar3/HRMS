@@ -23,31 +23,31 @@ export class HrController {
 
   @Get('leave-requests')
   async getLeaveRequests(@Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.userId;
     return this.hrService.getLeaveRequests(userId);
   }
 
   @Post('leave-requests')
   async createLeaveRequest(@Req() req: any, @Body() data: any) {
-    const userId = req.user.sub;
+    const userId = req.user.userId;
     return this.hrService.createLeaveRequest(userId, data);
   }
 
   @Get('payslips')
   async getPayslips(@Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.userId;
     return this.hrService.getPayslips(userId);
   }
 
   @Get('attendance/status')
   async getAttendanceStatus(@Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.userId;
     return this.hrService.getAttendanceStatus(userId);
   }
 
   @Post('attendance/toggle')
   async toggleAttendance(@Req() req: any) {
-    const userId = req.user.sub;
+    const userId = req.user.userId;
     return this.hrService.toggleAttendance(userId);
   }
 

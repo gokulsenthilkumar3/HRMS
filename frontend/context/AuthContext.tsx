@@ -28,6 +28,7 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, fullName: string, department?: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
@@ -151,6 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/dashboard');
   }, [router]);
 
+  const signup = useCallback(async (email: string, password: string, fullName: string, department?: string) => {
+    const res = await fetch(`${API}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.toLowerCase().trim(), password, fullName: fullName.trim(), department: department?.trim() || undefined }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const message = (err as { message?: string | string[] }).message;
+      throw new Error(Array.isArray(message) ? message[0] : message || 'Unable to create your account');
+    }
+    router.push(`/login?registered=1&email=${encodeURIComponent(email.toLowerCase().trim())}`);
+  }, [router]);
+
   const logout = useCallback(async () => {
     try {
       if (token) {
@@ -188,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         loading,
         login,
+        signup,
         logout,
         isAdmin:   user?.role === 'ADMIN',
         isManager: user?.role === 'MANAGER' || user?.role === 'ADMIN',

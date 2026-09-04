@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/careers'];
+const PUBLIC_PATHS = ['/login', '/signup', '/careers'];
 
 // Routes restricted to admin-only (ADMIN role)
 const ADMIN_ONLY_PATHS = ['/settings'];
 
 // Routes restricted to admin or manager
-const MANAGER_PATHS = ['/reports', '/compliance'];
+const MANAGER_PATHS = ['/reports', '/compliance', '/hr/add'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

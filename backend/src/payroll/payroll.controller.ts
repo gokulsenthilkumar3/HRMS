@@ -9,7 +9,7 @@ import { Roles } from '../auth/roles.decorator';
 export class PayrollController {
   constructor(private svc: PayrollService) {}
 
-  @Get('my') myPayslips(@Request() req: any) { return this.svc.getUserPayslips(req.user.sub); }
+  @Get('my') myPayslips(@Request() req: any) { return this.svc.getUserPayslips(req.user.userId); }
   @Get('user/:id') @UseGuards(RolesGuard) @Roles('ADMIN','MANAGER') userPayslips(@Param('id') id: string) { return this.svc.getUserPayslips(id); }
 
   @Post('calculate') calculate(@Body() body: { basicSalary: number }) {
@@ -18,7 +18,7 @@ export class PayrollController {
     return { salary, tax };
   }
 
-  @Post('run') @UseGuards(RolesGuard) @Roles('ADMIN') run(@Body() body: { period: string }, @Request() req: any) { return this.svc.runPayroll(body.period, req.user.sub); }
+  @Post('run') @UseGuards(RolesGuard) @Roles('ADMIN') run(@Body() body: { period: string }, @Request() req: any) { return this.svc.runPayroll(body.period, req.user.userId); }
   @Patch('approve/:period') @UseGuards(RolesGuard) @Roles('ADMIN','MANAGER') approve(@Param('period') p: string) { return this.svc.approvePayrun(p); }
   @Patch('process/:period') @UseGuards(RolesGuard) @Roles('ADMIN') process(@Param('period') p: string)  { return this.svc.processPayrun(p); }
 

@@ -144,7 +144,7 @@ export default function RootPage() {
 
       {/* Interactive 3D Showcase */}
       <section className="landing-section" style={{ borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', background: 'rgba(13,17,23,0.2)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '60px', alignItems: 'center' }}>
+        <div className="landing-showcase">
           <div>
             <span className="section-tag">Digital Twin Demo</span>
             <h2 className="section-title-large" style={{ fontSize: '2.3rem' }}>Visually Inspect Hardware Remotely</h2>
@@ -163,8 +163,12 @@ export default function RootPage() {
             </div>
           </div>
           <div style={{ height: '400px', background: 'rgba(0,0,0,0.3)', borderRadius: '20px', border: '1px solid var(--border-color)', overflow: 'hidden', position: 'relative' }} className="glow-border">
-            {/* Embedded 3D rack view for the landing page */}
-            <iframe src="/dashboard" style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none', opacity: 0.8 }} title="3D Preview" />
+            {/* Lightweight preview keeps the public page independent from authenticated routes. */}
+            <div className="twin-preview" aria-label="Digital twin preview">
+              <div className="twin-grid-lines" />
+              <div className="twin-rack"><div /><div /><div /><div /></div>
+              <div className="twin-status-card"><span className="status-live" />Server rack A-04 <strong>Healthy</strong><small>CPU 42% · 21°C</small></div>
+            </div>
             <div style={{
               position: 'absolute',
               top: '20px',

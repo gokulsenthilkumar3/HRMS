@@ -4,7 +4,9 @@
  * Fixes Issue #23: Global Search & Command Palette.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Search, LayoutDashboard, Users, DollarSign, CalendarClock, BarChart3, Settings, X } from 'lucide-react';
+import { Search, LayoutDashboard, Users, DollarSign, CalendarClock, BarChart3, Settings, X, UserPlus } from 'lucide-react';
+import { useAuth, UserRole } from '../context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 interface PaletteItem {
   id: string;
@@ -13,6 +15,7 @@ interface PaletteItem {
   href?: string;
   icon: React.ReactNode;
   category: string;
+  roles?: UserRole[];
 }
 
 const STATIC_ITEMS: PaletteItem[] = [
@@ -20,11 +23,11 @@ const STATIC_ITEMS: PaletteItem[] = [
   { id: 'nav-employees',   label: 'Employees',          description: 'Employee directory',           href: '/hr',          icon: <Users size={16} />,           category: 'Navigate' },
   { id: 'nav-payroll',     label: 'Payroll',            description: 'Salary & payslips',           href: '/payroll',     icon: <DollarSign size={16} />,      category: 'Navigate' },
   { id: 'nav-attendance',  label: 'Attendance',         description: 'Daily log & leave requests',  href: '/attendance',  icon: <CalendarClock size={16} />,   category: 'Navigate' },
-  { id: 'nav-reports',     label: 'Reports',            description: 'HR analytics & exports',      href: '/reports',     icon: <BarChart3 size={16} />,       category: 'Navigate' },
-  { id: 'nav-settings',    label: 'Settings',           description: 'Company & role settings',     href: '/settings',    icon: <Settings size={16} />,        category: 'Navigate' },
+  { id: 'nav-add-employee',label: 'Add employee',       description: 'Create an employee record',   href: '/hr/add',      icon: <UserPlus size={16} />,        category: 'Actions', roles: ['ADMIN', 'MANAGER'] },
+  { id: 'nav-reports',     label: 'Reports',            description: 'HR analytics & exports',      href: '/reports',     icon: <BarChart3 size={16} />,       category: 'Navigate', roles: ['ADMIN', 'MANAGER'] },
+  { id: 'nav-settings',    label: 'Settings',           description: 'Company & role settings',     href: '/settings',    icon: <Settings size={16} />,        category: 'Navigate', roles: ['ADMIN'] },
   { id: 'nav-recruitment', label: 'Recruitment',        description: 'Jobs & candidate pipeline',   href: '/recruitment', icon: <Users size={16} />,           category: 'Navigate' },
   { id: 'nav-analytics',   label: '3D Analytics',       description: 'Immersive HR insights',       href: '/analytics',   icon: <BarChart3 size={16} />,       category: 'Navigate' },
-  { id: 'nav-orgchart',    label: 'Org Chart',          description: '3D company hierarchy',        href: '/hr/org-chart',icon: <Users size={16} />,           category: 'Navigate' },
 ];
 
 function fuzzyMatch(text: string, query: string): boolean {
@@ -41,13 +44,16 @@ interface CommandPaletteProps {
 }
 
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
+  const { user } = useAuth();
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filtered = STATIC_ITEMS.filter(
-    (item) => fuzzyMatch(item.label, query) || fuzzyMatch(item.description, query)
+  const filtered = STATIC_ITEMS.filter((item) =>
+    (!item.roles || (user && item.roles.includes(user.role)))
+    && (fuzzyMatch(item.label, query) || fuzzyMatch(item.description, query)),
   );
 
   useEffect(() => { setActive(0); }, [query]);
@@ -65,11 +71,11 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
       if (e.key === 'ArrowUp')   { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
       if (e.key === 'Escape')    { onClose(); }
       if (e.key === 'Enter' && filtered[active]?.href) {
-        window.location.href = filtered[active].href!;
+        router.push(filtered[active].href!);
         onClose();
       }
     },
-    [filtered, active, onClose]
+    [filtered, active, onClose, router]
   );
 
   if (!open) return null;
@@ -153,7 +159,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     key={item.id}
                     role="option"
                     aria-selected={isActive}
-                    onClick={() => { if (item.href) { window.location.href = item.href; onClose(); } }}
+                    onClick={() => { if (item.href) { router.push(item.href); onClose(); } }}
                     onMouseEnter={() => setActive(globalIdx)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
